@@ -30,6 +30,12 @@ sealed class AnywhereEngineState {
     object Staging : AnywhereEngineState()
     data class CreatingSession(val status: String) : AnywhereEngineState()
     data class WaitingForPeer(val sessionCode: String, val shareLink: String) : AnywhereEngineState()
+    data class PeerConnected(
+        val peerDeviceName: String,
+        val peerDeviceId: String,
+        val sessionCode: String,
+        val sasCode: String
+    ) : AnywhereEngineState()
     data class IncomingTransferRequest(
         val senderDeviceName: String,
         val senderDeviceId: String,
@@ -253,9 +259,24 @@ class AnywhereTransferEngine(
         _engineState.value = AnywhereEngineState.WaitingForPeer(sessionCode, shareLink)
     }
 
-    override fun onPeerJoined(peerDeviceName: String, peerDeviceId: String) {
+    override fun onPeerJoined(peerDeviceName: String, peerDeviceId: String, peerPublicKeyBase64: String?) {
         this.remoteDeviceName = peerDeviceName
         this.remoteDeviceId = peerDeviceId
+        this.remotePublicKeyBase64 = peerPublicKeyBase64
+
+        // Derive SAS code immediately so sender sees the verification code
+        val sid = signalingClient.currentSessionId ?: ""
+        val sas = if (!peerPublicKeyBase64.isNullOrBlank()) {
+            securityManager.calculateSasCode(peerPublicKeyBase64, sid)
+        } else "000 000"
+
+        _engineState.value = AnywhereEngineState.PeerConnected(
+            peerDeviceName = peerDeviceName,
+            peerDeviceId = peerDeviceId,
+            sessionCode = signalingClient.currentSessionCode ?: "",
+            sasCode = sas
+        )
+
         // Send transfer manifest to peer
         signalingClient.sendTransferManifest(pendingManifests, securityManager.getPublicKeyBase64(), deviceName)
     }

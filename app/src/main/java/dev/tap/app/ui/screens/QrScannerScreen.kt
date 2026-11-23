@@ -79,9 +79,27 @@ fun QrScannerScreen(viewModel: TransferViewModel) {
 
     fun handleScannedResult(content: String) {
         val trimmed = content.trim()
-        if (trimmed.startsWith("TAP-", ignoreCase = true)) {
-            val code = trimmed.uppercase()
-            viewModel.joinAnywhereShare(code)
+        val normalized = dev.tap.app.webrtc.signaling.TapSignalingClient.normalizeSessionCode(trimmed)
+
+        // Haptic feedback on scan
+        try {
+            val vibrator = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
+                vm?.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                vibrator?.vibrate(android.os.VibrationEffect.createOneShot(50, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(50)
+            }
+        } catch (_: Exception) {}
+
+        if (normalized.startsWith("TAP-")) {
+            viewModel.joinAnywhereShare(normalized)
             viewModel.navigateTo(TapScreen.TransferProgress)
             return
         }
@@ -89,7 +107,8 @@ fun QrScannerScreen(viewModel: TransferViewModel) {
         if (trimmed.contains("tap.dev/s/", ignoreCase = true)) {
             val code = trimmed.substringAfter("tap.dev/s/").substringBefore("?").substringBefore("/").uppercase()
             if (code.isNotBlank()) {
-                viewModel.joinAnywhereShare(code)
+                val normCode = dev.tap.app.webrtc.signaling.TapSignalingClient.normalizeSessionCode(code)
+                viewModel.joinAnywhereShare(normCode)
                 viewModel.navigateTo(TapScreen.TransferProgress)
                 return
             }
@@ -199,6 +218,7 @@ fun QrScannerScreen(viewModel: TransferViewModel) {
                             }
 
                             val imageAnalysis = ImageAnalysis.Builder()
+                                .setTargetResolution(android.util.Size(1280, 720))
                                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                                 .build()
                                 .also {

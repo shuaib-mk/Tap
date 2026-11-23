@@ -186,8 +186,133 @@ fun TransferProgressScreen(viewModel: TransferViewModel) {
                             }
                         }
                     }
+                } else if (anywhereState is AnywhereEngineState.PeerConnected) {
+                    // 2. PEER CONNECTED — VERIFICATION STATE
+                    val peer = anywhereState as AnywhereEngineState.PeerConnected
+                    val files by viewModel.stagedAnywhereFiles.collectAsState()
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = TapPanel,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, TapAccent.copy(alpha = 0.5f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(20.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(TapGreen.copy(alpha = 0.15f))
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(TapGreen)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        "RECIPIENT CONNECTED",
+                                        color = TapGreen,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.sp,
+                                        fontFamily = AnthropicSerifDisplay
+                                    )
+                                }
+
+                                Spacer(Modifier.height(12.dp))
+
+                                Text(
+                                    text = peer.peerDeviceName,
+                                    fontFamily = AnthropicSerifDisplay,
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "${files.size} items • ${ProximityFile.formatBytes(files.sumOf { it.sizeBytes })}",
+                                    color = TapMuted,
+                                    fontSize = 12.sp,
+                                    fontFamily = AnthropicSerifText
+                                )
+
+                                Spacer(Modifier.height(20.dp))
+
+                                // Security SAS Verification Code Box
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(TapAccent.copy(alpha = 0.12f))
+                                        .border(1.dp, TapAccent.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            "SECURITY VERIFICATION CODE",
+                                            color = TapAccent,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 1.5.sp,
+                                            fontFamily = AnthropicSerifDisplay
+                                        )
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            text = peer.sasCode,
+                                            color = Color.White,
+                                            fontSize = 30.sp,
+                                            fontWeight = FontWeight.Black,
+                                            letterSpacing = 4.sp,
+                                            fontFamily = AnthropicSerifDisplay
+                                        )
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            "Confirm this code matches the recipient's screen",
+                                            color = TapMuted,
+                                            fontSize = 11.sp,
+                                            fontFamily = AnthropicSerifText
+                                        )
+                                    }
+                                }
+
+                                Spacer(Modifier.height(20.dp))
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 8.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        color = TapAccent,
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(
+                                        "Recipient is verifying files and accepting download...",
+                                        color = TapMuted,
+                                        fontSize = 12.sp,
+                                        fontFamily = AnthropicSerifText
+                                    )
+                                }
+                            }
+                        }
+                    }
                 } else if (anywhereState is AnywhereEngineState.Error) {
-                    // 2. ERROR STATE
+                    // 3. ERROR STATE
                     val err = (anywhereState as AnywhereEngineState.Error).message
                     Surface(
                         shape = RoundedCornerShape(16.dp),
@@ -207,7 +332,7 @@ fun TransferProgressScreen(viewModel: TransferViewModel) {
                         }
                     }
                 } else {
-                    // 3. CONNECTING OR ACTIVE TRANSFER STATE
+                    // 4. CONNECTING OR ACTIVE TRANSFER STATE
                     Surface(
                         shape = RoundedCornerShape(16.dp),
                         color = TapPanel,
@@ -374,7 +499,7 @@ fun TransferProgressScreen(viewModel: TransferViewModel) {
                     ) {
                         Text("Return Home", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
-                } else if (anywhereState is AnywhereEngineState.WaitingForPeer) {
+                } else if (anywhereState is AnywhereEngineState.WaitingForPeer || anywhereState is AnywhereEngineState.PeerConnected) {
                     Button(
                         onClick = {
                             viewModel.cancelAnywhereTransfer()

@@ -23,7 +23,7 @@ import kotlin.random.Random
 
 interface SignalingListener {
     fun onSessionCreated(sessionId: String, sessionCode: String)
-    fun onPeerJoined(peerDeviceName: String, peerDeviceId: String)
+    fun onPeerJoined(peerDeviceName: String, peerDeviceId: String, peerPublicKeyBase64: String?)
     fun onSdpOfferReceived(sdp: String)
     fun onSdpAnswerReceived(sdp: String)
     fun onIceCandidateReceived(sdpMid: String, sdpMLineIndex: Int, candidate: String)
@@ -410,7 +410,7 @@ class TapSignalingClient(
                 }
                 SignalingType.SESSION_JOIN -> {
                     val peerId = if (payload.receiverId.isNotBlank()) payload.receiverId else payload.senderId
-                    listener?.onPeerJoined(payload.deviceName, peerId)
+                    listener?.onPeerJoined(payload.deviceName, peerId, payload.publicKeyBase64)
                 }
                 SignalingType.SDP_OFFER -> {
                     payload.sdp?.let { listener?.onSdpOfferReceived(it) }
