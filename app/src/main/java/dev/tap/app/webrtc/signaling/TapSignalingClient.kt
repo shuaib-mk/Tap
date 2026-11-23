@@ -106,6 +106,9 @@ class TapSignalingClient(
     private var lanListenJob: Job? = null
     private var lanServerSocket: ServerSocket? = null
     private var lanTcpSignalingSocket: Socket? = null
+    private var joinRetryJob: Job? = null
+    @Volatile
+    private var hasHandshakeStarted: Boolean = false
 
     fun getSignalingUrl(): String = prefs.getString(PREF_SIGNALING_URL, NTFY_WSS_BASE) ?: NTFY_WSS_BASE
 
@@ -165,6 +168,9 @@ class TapSignalingClient(
     }
 
     fun disconnect() {
+        joinRetryJob?.cancel()
+        joinRetryJob = null
+        hasHandshakeStarted = false
         try {
             webSocket?.close(1000, "User disconnected")
         } catch (_: Exception) {}
@@ -238,17 +244,32 @@ class TapSignalingClient(
         subscribeToTopic(normalized)
         startLanSignaling(normalized, isSender = false)
 
+        hasHandshakeStarted = false
         val payload = SignalingPayload(
             type = SignalingType.SESSION_JOIN,
             sessionId = targetSessionId,
             sessionCode = normalized,
-            receiverId = deviceId,
+            receiverId = "", // Broadcast to session host so sender accepts it without filtering
             senderId = deviceId,
             deviceName = deviceName,
             publicKeyBase64 = publicKeyBase64
         )
 
         sendPayload(payload)
+
+        // Resilient handshake retry: if WebSocket was establishing or sender missed the first packet,
+        // periodically re-broadcast SESSION_JOIN every 2s until offer or manifest arrives (up to 4 times)
+        joinRetryJob?.cancel()
+        joinRetryJob = scope.launch(Dispatchers.IO) {
+            var attempt = 0
+            while (isActive && attempt < 4 && !hasHandshakeStarted) {
+                delay(2000)
+                if (hasHandshakeStarted) break
+                Log.d(TAG, "Re-broadcasting SESSION_JOIN retry #$attempt")
+                sendPayload(payload)
+                attempt++
+            }
+        }
         return true
     }
 
@@ -388,14 +409,14 @@ class TapSignalingClient(
             if (eventType == "message") {
                 val innerMessage = jsonElement.jsonObject["message"]?.jsonPrimitive?.content ?: return
                 val payload = json.decodeFromString<SignalingPayload>(innerMessage)
-                // Filter out echoes sent by this local device
-                if (payload.senderId != localDeviceId && (payload.receiverId.isBlank() || payload.receiverId == localDeviceId)) {
+                // Filter out echoes sent by this local device, but always accept SESSION_JOIN and targeted/broadcast messages
+                if (payload.senderId != localDeviceId && (payload.receiverId.isBlank() || payload.receiverId == localDeviceId || payload.type == SignalingType.SESSION_JOIN)) {
                     handleIncomingPayload(payload)
                 }
             } else if (rawText.contains("\"type\":")) {
                 // Direct signaling payload fallback
                 val payload = json.decodeFromString<SignalingPayload>(rawText)
-                if (payload.senderId != localDeviceId && (payload.receiverId.isBlank() || payload.receiverId == localDeviceId)) {
+                if (payload.senderId != localDeviceId && (payload.receiverId.isBlank() || payload.receiverId == localDeviceId || payload.type == SignalingType.SESSION_JOIN)) {
                     handleIncomingPayload(payload)
                 }
             }
@@ -415,6 +436,8 @@ class TapSignalingClient(
                     listener?.onPeerJoined(payload.deviceName, peerId, payload.publicKeyBase64)
                 }
                 SignalingType.SDP_OFFER -> {
+                    hasHandshakeStarted = true
+                    joinRetryJob?.cancel()
                     payload.sdp?.let { listener?.onSdpOfferReceived(it) }
                 }
                 SignalingType.SDP_ANSWER -> {
@@ -426,6 +449,8 @@ class TapSignalingClient(
                     }
                 }
                 SignalingType.TRANSFER_MANIFEST -> {
+                    hasHandshakeStarted = true
+                    joinRetryJob?.cancel()
                     listener?.onTransferManifestReceived(payload)
                 }
                 SignalingType.TRANSFER_RESPONSE -> {

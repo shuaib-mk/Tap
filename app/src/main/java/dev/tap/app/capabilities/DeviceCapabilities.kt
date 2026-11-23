@@ -21,6 +21,7 @@ data class DeviceCapabilities(
     val wifiConnected: Boolean = false,
     val wifiSsid: String? = null,
     val localIpAddress: String? = null,
+    val isCellularOnly: Boolean = false,
 
     // Optical / Camera
     val cameraAvailable: Boolean = false,

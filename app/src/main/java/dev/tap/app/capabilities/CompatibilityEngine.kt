@@ -55,7 +55,9 @@ object CompatibilityEngine {
             }
         }
 
-        val localIp = getLocalIpv4Address()
+        val isHotspot = isHotspotActive()
+        val localIp = getBestLocalIpv4Address()
+        val isCellularOnly = !isWifi && !isHotspot
 
         // 4. Optical Camera Detection
         val cameraAvailable = pm.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
@@ -79,6 +81,7 @@ object CompatibilityEngine {
             wifiConnected = isWifi,
             wifiSsid = wifiSsid,
             localIpAddress = localIp,
+            isCellularOnly = isCellularOnly,
             cameraAvailable = cameraAvailable,
             androidVersion = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
             sdkInt = Build.VERSION.SDK_INT,
@@ -90,24 +93,85 @@ object CompatibilityEngine {
         )
     }
 
-    private fun getLocalIpv4Address(): String? {
+    fun getBestLocalIpv4Address(): String? {
         try {
-            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return null
-            for (intf in interfaces) {
-                if (intf.isLoopback || !intf.isUp) continue
-                val addrs = intf.inetAddresses
-                for (addr in addrs) {
-                    if (!addr.isLoopbackAddress && addr is Inet4Address) {
-                        val hostAddress = addr.hostAddress
-                        if (hostAddress != null && !hostAddress.startsWith("127.")) {
-                            return hostAddress
-                        }
-                    }
-                }
+            val interfaces = NetworkInterface.getNetworkInterfaces()?.toList() ?: return null
+
+            // Priority 1: Wi-Fi interfaces (wlan0, etc.)
+            val wifiIntf = interfaces.firstOrNull { intf ->
+                !intf.isLoopback && intf.isUp && intf.name.startsWith("wlan", ignoreCase = true)
+            }
+            if (wifiIntf != null) {
+                val ip = extractIpv4(wifiIntf)
+                if (ip != null) return ip
+            }
+
+            // Priority 2: Hotspot / SoftAP interfaces (ap0, softap, swlan, rndis)
+            val hotspotIntf = interfaces.firstOrNull { intf ->
+                !intf.isLoopback && intf.isUp && (
+                    intf.name.startsWith("ap", ignoreCase = true) ||
+                    intf.name.startsWith("softap", ignoreCase = true) ||
+                    intf.name.startsWith("rndis", ignoreCase = true) ||
+                    intf.name.startsWith("swlan", ignoreCase = true)
+                )
+            }
+            if (hotspotIntf != null) {
+                val ip = extractIpv4(hotspotIntf)
+                if (ip != null) return ip
+            }
+
+            // Priority 3: Any non-cellular local LAN (eth0, etc.)
+            val lanIntf = interfaces.firstOrNull { intf ->
+                !intf.isLoopback && intf.isUp &&
+                    !intf.name.startsWith("rmnet", ignoreCase = true) &&
+                    !intf.name.startsWith("ccmni", ignoreCase = true) &&
+                    !intf.name.startsWith("pdp", ignoreCase = true)
+            }
+            if (lanIntf != null) {
+                val ip = extractIpv4(lanIntf)
+                if (ip != null) return ip
+            }
+
+            // Priority 4: Cellular interface fallback
+            val anyIntf = interfaces.firstOrNull { !it.isLoopback && it.isUp }
+            if (anyIntf != null) {
+                return extractIpv4(anyIntf)
             }
         } catch (_: Exception) {}
         return null
     }
+
+    fun isHotspotActive(): Boolean {
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces()?.toList() ?: return false
+            return interfaces.any { intf ->
+                !intf.isLoopback && intf.isUp && (
+                    intf.name.startsWith("ap", ignoreCase = true) ||
+                    intf.name.startsWith("softap", ignoreCase = true) ||
+                    intf.name.startsWith("rndis", ignoreCase = true) ||
+                    intf.name.startsWith("swlan", ignoreCase = true)
+                ) && extractIpv4(intf) != null
+            }
+        } catch (_: Exception) {
+            return false
+        }
+    }
+
+    private fun extractIpv4(intf: NetworkInterface): String? {
+        val addrs = intf.inetAddresses ?: return null
+        while (addrs.hasMoreElements()) {
+            val addr = addrs.nextElement()
+            if (!addr.isLoopbackAddress && addr is Inet4Address) {
+                val host = addr.hostAddress
+                if (host != null && !host.startsWith("127.")) {
+                    return host
+                }
+            }
+        }
+        return null
+    }
+
+    private fun getLocalIpv4Address(): String? = getBestLocalIpv4Address()
 
     private fun checkQuickShareInstalled(pm: PackageManager): Boolean {
         val quickSharePackages = listOf(

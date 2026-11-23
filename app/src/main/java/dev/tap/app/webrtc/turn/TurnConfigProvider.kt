@@ -34,15 +34,14 @@ class TurnConfigProvider(private val context: Context) {
             "stun:stun.l.google.com:19302",
             "stun:stun1.l.google.com:19302",
             "stun:stun2.l.google.com:19302",
+            "stun:stun3.l.google.com:19302",
+            "stun:stun4.l.google.com:19302",
             "stun:stun.cloudflare.com:3478",
+            "stun:stun.nextcloud.com:443",
             "stun:stun.services.mozilla.com"
         )
 
-        val DEFAULT_TURN_RELAYS = listOf(
-            Triple("turn:openrelay.metered.ca:80", "openrelayproject", "openrelayproject"),
-            Triple("turn:openrelay.metered.ca:443", "openrelayproject", "openrelayproject"),
-            Triple("turn:openrelay.metered.ca:443?transport=tcp", "openrelayproject", "openrelayproject")
-        )
+        val DEFAULT_TURN_RELAYS: List<Triple<String, String, String>> = emptyList()
 
         /**
          * Generates time-limited ephemeral COTURN credentials from a shared secret.

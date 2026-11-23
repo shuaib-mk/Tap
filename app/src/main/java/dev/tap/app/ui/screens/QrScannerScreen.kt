@@ -114,6 +114,19 @@ fun QrScannerScreen(viewModel: TransferViewModel) {
             }
         }
 
+        // Contact Card vCard / meCard QR Code Scanner Support
+        if (trimmed.contains("BEGIN:VCARD", ignoreCase = true) || trimmed.contains("MECARD:", ignoreCase = true)) {
+            try {
+                val card = dev.tap.app.contacts.ContactCard.parseVCard(trimmed)
+                viewModel.showBeamedContact(card, isTwoWay = false)
+                viewModel.navigateBack()
+                return
+            } catch (e: Exception) {
+                Toast.makeText(context, "Scanned contact card: ${e.message}", Toast.LENGTH_SHORT).show()
+                return
+            }
+        }
+
         if (trimmed.startsWith("{") && trimmed.contains("sessionId")) {
             try {
                 val offer = TapProtocol.json.decodeFromString<SessionOffer>(trimmed)

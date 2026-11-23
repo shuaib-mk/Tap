@@ -258,21 +258,7 @@ class TransferServer(
 
     companion object {
         fun getLocalIpAddress(): String {
-            try {
-                val interfaces = NetworkInterface.getNetworkInterfaces()
-                while (interfaces.hasMoreElements()) {
-                    val intf = interfaces.nextElement()
-                    if (intf.isLoopback || !intf.isUp) continue
-                    val addrs = intf.inetAddresses
-                    while (addrs.hasMoreElements()) {
-                        val addr = addrs.nextElement()
-                        if (addr is Inet4Address && !addr.isLoopbackAddress) {
-                            return addr.hostAddress ?: "127.0.0.1"
-                        }
-                    }
-                }
-            } catch (_: Exception) {}
-            return "127.0.0.1"
+            return dev.tap.app.capabilities.CompatibilityEngine.getBestLocalIpv4Address() ?: "127.0.0.1"
         }
     }
 }

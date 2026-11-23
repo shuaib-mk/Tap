@@ -396,7 +396,10 @@ class AnywhereTransferEngine(
             WebRtcConnectionState.CONNECTED -> {
                 Log.d("AnywhereEngine", "WebRTC Connection established via $transportType")
             }
-            WebRtcConnectionState.DISCONNECTED,
+            WebRtcConnectionState.DISCONNECTED -> {
+                // Transient state during mobile handover or candidate gathering - await automatic reconnection
+                Log.w("AnywhereEngine", "WebRTC temporary ICE disconnection, awaiting reconnection...")
+            }
             WebRtcConnectionState.FAILED -> {
                 if (_engineState.value !is AnywhereEngineState.Completed) {
                     _engineState.value = AnywhereEngineState.Error("WebRTC connection lost.")

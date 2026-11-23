@@ -4,6 +4,8 @@ import android.content.Context
 import dev.tap.app.webrtc.turn.TurnConfigProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.webrtc.*
 import java.nio.ByteBuffer
@@ -61,6 +63,8 @@ class WebRtcPeerConnectionManager(
 
     var connectionState: WebRtcConnectionState = WebRtcConnectionState.IDLE
         private set
+
+    private var iceRecoveryJob: Job? = null
 
     companion object {
         @Volatile
@@ -127,16 +131,41 @@ class WebRtcPeerConnectionManager(
                         }
                         PeerConnection.IceConnectionState.CONNECTED,
                         PeerConnection.IceConnectionState.COMPLETED -> {
+                            iceRecoveryJob?.cancel()
+                            iceRecoveryJob = null
                             inspectSelectedCandidatePair()
                             updateState(WebRtcConnectionState.CONNECTED)
                         }
                         PeerConnection.IceConnectionState.DISCONNECTED -> {
+                            // Transient state in WebRTC mobile handover. Do not immediately fail.
                             updateState(WebRtcConnectionState.DISCONNECTED)
+                            iceRecoveryJob?.cancel()
+                            iceRecoveryJob = scope.launch(Dispatchers.Main) {
+                                delay(6000)
+                                if (peerConnection?.iceConnectionState() == PeerConnection.IceConnectionState.DISCONNECTED) {
+                                    try { peerConnection?.restartIce() } catch (_: Exception) {}
+                                    delay(4000)
+                                    if (peerConnection?.iceConnectionState() == PeerConnection.IceConnectionState.DISCONNECTED ||
+                                        peerConnection?.iceConnectionState() == PeerConnection.IceConnectionState.FAILED) {
+                                        updateState(WebRtcConnectionState.FAILED)
+                                    }
+                                }
+                            }
                         }
                         PeerConnection.IceConnectionState.FAILED -> {
-                            updateState(WebRtcConnectionState.FAILED)
+                            // Attempt ICE restart once before declaring permanent failure
+                            iceRecoveryJob?.cancel()
+                            iceRecoveryJob = scope.launch(Dispatchers.Main) {
+                                try { peerConnection?.restartIce() } catch (_: Exception) {}
+                                delay(4000)
+                                if (peerConnection?.iceConnectionState() == PeerConnection.IceConnectionState.FAILED) {
+                                    updateState(WebRtcConnectionState.FAILED)
+                                }
+                            }
                         }
                         PeerConnection.IceConnectionState.CLOSED -> {
+                            iceRecoveryJob?.cancel()
+                            iceRecoveryJob = null
                             updateState(WebRtcConnectionState.CLOSED)
                         }
                         else -> {}
@@ -363,6 +392,8 @@ class WebRtcPeerConnectionManager(
     }
 
     fun close() {
+        iceRecoveryJob?.cancel()
+        iceRecoveryJob = null
         try { dataChannel?.close() } catch (_: Exception) {}
         dataChannel = null
 

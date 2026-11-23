@@ -40,6 +40,7 @@ fun QrConnectScreen(viewModel: TransferViewModel) {
 
     val isHttpRunning by viewModel.isHttpServerRunning.collectAsState()
     val httpUrl by viewModel.httpServerUrl.collectAsState()
+    val capabilities by viewModel.capabilities.collectAsState()
 
     LaunchedEffect(Unit) {
         if (sessionOffer == null) {
@@ -177,6 +178,24 @@ fun QrConnectScreen(viewModel: TransferViewModel) {
                             Text(httpUrl, color = Color.White, fontWeight = FontWeight.Black, fontSize = 20.sp)
                             Spacer(Modifier.height(6.dp))
                             Text("Point recipient's camera or browser to this URL", color = TapMuted, fontSize = 12.sp)
+
+                            if (capabilities.isCellularOnly) {
+                                Spacer(Modifier.height(14.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFF2A2015),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFBBF24).copy(alpha = 0.4f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        "Note: Direct browser download requires both phones on the same Wi-Fi or Mobile Hotspot. For cellular transfer, use 'Send via Code' instead.",
+                                        color = Color(0xFFFDE68A),
+                                        fontSize = 11.sp,
+                                        modifier = Modifier.padding(10.dp),
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
+                                }
+                            }
                         }
                     }
                 }
