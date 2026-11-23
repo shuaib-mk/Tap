@@ -5,8 +5,11 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -31,7 +34,8 @@ fun HomeScreen(viewModel: TransferViewModel) {
     val context = LocalContext.current
     val mode by viewModel.mode.collectAsState()
     val selectedFiles by viewModel.selectedFiles.collectAsState()
-    val sessionOffer by viewModel.sessionOffer.collectAsState()
+    val caps by viewModel.capabilities.collectAsState()
+    val contactCard by viewModel.contactCard.collectAsState()
 
     // Activity Result Launchers for file picking
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -39,7 +43,7 @@ fun HomeScreen(viewModel: TransferViewModel) {
     ) { uris: List<Uri> ->
         if (uris.isNotEmpty()) {
             viewModel.addFiles(uris)
-            viewModel.navigateTo(TapScreen.FilePicker)
+            viewModel.navigateTo(TapScreen.Send)
         }
     }
 
@@ -48,7 +52,7 @@ fun HomeScreen(viewModel: TransferViewModel) {
     ) { uris: List<Uri> ->
         if (uris.isNotEmpty()) {
             viewModel.addFiles(uris)
-            viewModel.navigateTo(TapScreen.FilePicker)
+            viewModel.navigateTo(TapScreen.Send)
         }
     }
 
@@ -80,7 +84,7 @@ fun HomeScreen(viewModel: TransferViewModel) {
                             viewModel.addLink(linkUrl)
                             showLinkDialog = false
                             linkUrl = ""
-                            viewModel.navigateTo(TapScreen.FilePicker)
+                            viewModel.navigateTo(TapScreen.Send)
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = TapAccent, contentColor = TapInk)
@@ -99,7 +103,7 @@ fun HomeScreen(viewModel: TransferViewModel) {
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 22.dp)
+                .padding(horizontal = 20.dp)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -107,7 +111,7 @@ fun HomeScreen(viewModel: TransferViewModel) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 16.dp, bottom = 20.dp),
+                    .padding(top = 16.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -117,13 +121,21 @@ fun HomeScreen(viewModel: TransferViewModel) {
                     fontWeight = FontWeight.Black,
                     letterSpacing = 3.sp
                 )
-                Spacer(Modifier.width(12.dp))
-                StatusChip("NFC", viewModel.nfcCapabilities.enabled)
-                Spacer(Modifier.width(6.dp))
-                StatusChip("BLE", viewModel.isBleAvailable)
+                Spacer(Modifier.width(10.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(TapAccent.copy(alpha = 0.2f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text("UNIVERSAL", color = TapAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
 
                 Spacer(Modifier.weight(1f))
 
+                IconButton(onClick = { viewModel.navigateTo(TapScreen.CompatibilityDiagnostics) }) {
+                    Icon(Icons.Rounded.Analytics, contentDescription = "Diagnostics", tint = TapMuted)
+                }
                 IconButton(onClick = { viewModel.navigateTo(TapScreen.History) }) {
                     Icon(Icons.Rounded.History, contentDescription = "History", tint = TapMuted)
                 }
@@ -132,44 +144,61 @@ fun HomeScreen(viewModel: TransferViewModel) {
                 }
             }
 
-            Spacer(Modifier.height(10.dp))
+            // Universal Status Pills
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                StatusChip("NFC: ${if (caps.nfcEnabled) "Ready" else "Off"}", caps.nfcEnabled)
+                StatusChip("BLE: ${if (caps.bluetoothEnabled) "Ready" else "Off"}", caps.bluetoothEnabled)
+                StatusChip("Wi-Fi: ${if (caps.wifiConnected) "Connected" else "Direct"}", caps.wifiConnected)
+                Spacer(Modifier.weight(1f))
+                TextButton(
+                    onClick = { viewModel.navigateTo(TapScreen.NfcReadiness) },
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Text("Modes", color = TapAccent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
 
             // Pulsing NFC circle
             PulsingNfcCircle(
                 active = mode == "Receive",
                 onClick = {
                     if (mode == "Receive") {
-                        viewModel.navigateTo(TapScreen.QrConnect)
+                        viewModel.navigateTo(TapScreen.Receive)
                     } else if (selectedFiles.isNotEmpty()) {
-                        viewModel.navigateTo(TapScreen.Discovery)
+                        viewModel.navigateTo(TapScreen.NearbyDevices)
                     } else {
                         photoPickerLauncher.launch("image/*")
                     }
                 }
             )
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(18.dp))
 
             Text(
                 text = if (mode == "Receive") "Bring devices together." else "Ready to share.",
                 color = Color.White,
-                fontSize = 28.sp,
+                fontSize = 26.sp,
                 fontWeight = FontWeight.Bold
             )
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
             Text(
                 text = if (mode == "Receive") {
-                    "Listening for nearby NFC, BLE, or QR connections"
+                    "Listening for nearby NFC, BLE, QR or Local Web clients"
                 } else if (selectedFiles.isNotEmpty()) {
                     "${selectedFiles.size} file(s) selected (${SelectedFile.formatBytes(viewModel.totalSelectedSize)})"
                 } else {
-                    "Select photos, files, links or contacts"
+                    "Tap to send files, or tap Contact Card below"
                 },
                 color = TapMuted,
                 fontSize = 14.sp
             )
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(18.dp))
 
             // Send / Receive Toggle Bar
             Row(
@@ -196,11 +225,64 @@ fun HomeScreen(viewModel: TransferViewModel) {
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(16.dp))
+
+            // PRIORITY HERO BANNER: Universal Digital Contact Card
+            Surface(
+                onClick = { viewModel.navigateTo(TapScreen.ContactCard) },
+                shape = RoundedCornerShape(18.dp),
+                color = TapPanel,
+                border = androidx.compose.foundation.BorderStroke(1.2.dp, TapAccent.copy(alpha = 0.6f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(TapAccent),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Rounded.ContactPhone, contentDescription = null, tint = TapInk, modifier = Modifier.size(24.dp))
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Digital Contact Card",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(TapAccent.copy(alpha = 0.2f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text("NO APP REQUIRED", color = TapAccent, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                            }
+                        }
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            "Share ${contactCard.displayName.ifBlank { "Contact" }} via NFC Tag, QR or Web",
+                            color = TapMuted,
+                            fontSize = 12.sp
+                        )
+                    }
+                    Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = TapAccent)
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
 
             // Action Tiles for File Picking
             Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 ActionTile(
@@ -224,24 +306,30 @@ fun HomeScreen(viewModel: TransferViewModel) {
                 ) {
                     showLinkDialog = true
                 }
+                ActionTile(
+                    label = "Scan QR",
+                    icon = Icons.Rounded.QrCodeScanner,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    viewModel.navigateTo(TapScreen.QrScanner)
+                }
             }
 
             if (selectedFiles.isNotEmpty()) {
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(14.dp))
                 TapButton(
-                    text = "View ${selectedFiles.size} Selected Files",
-                    onClick = { viewModel.navigateTo(TapScreen.FilePicker) },
+                    text = "Review & Send ${selectedFiles.size} File(s)",
+                    onClick = { viewModel.navigateTo(TapScreen.Send) },
                     isPrimary = true
                 )
             }
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(20.dp))
 
             // Footer Badges
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .padding(bottom = 16.dp)
+                modifier = Modifier.padding(bottom = 16.dp)
             ) {
                 Icon(
                     Icons.Rounded.QrCode2,
@@ -250,10 +338,10 @@ fun HomeScreen(viewModel: TransferViewModel) {
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(Modifier.width(6.dp))
-                TextButton(onClick = { viewModel.navigateTo(TapScreen.QrConnect) }) {
-                    Text("QR Code Connect", color = TapMuted, fontSize = 13.sp)
+                TextButton(onClick = { viewModel.navigateTo(TapScreen.Receive) }) {
+                    Text("Receive Screen", color = TapMuted, fontSize = 13.sp)
                 }
-                Spacer(Modifier.width(16.dp))
+                Spacer(Modifier.width(12.dp))
                 Icon(
                     Icons.Rounded.Lock,
                     contentDescription = null,
@@ -261,7 +349,7 @@ fun HomeScreen(viewModel: TransferViewModel) {
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(Modifier.width(6.dp))
-                Text("End-to-End Encrypted", color = TapMuted, fontSize = 13.sp)
+                Text("E2E Encrypted", color = TapMuted, fontSize = 13.sp)
             }
         }
     }

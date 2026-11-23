@@ -49,9 +49,12 @@ class DiscoveryManager(
 
         // 1. Enable NFC Reader Mode
         if (nfcCapabilities.enabled) {
-            NfcSessionExchange.enableReaderMode(activity) { offer ->
-                _state.value = DiscoveryState.Discovered(offer, ConnectionMethod.NFC_HCE)
-            }
+            NfcSessionExchange.enableReaderMode(
+                activity = activity,
+                onSessionDiscovered = { offer ->
+                    _state.value = DiscoveryState.Discovered(offer, ConnectionMethod.NFC_HCE)
+                }
+            )
         }
 
         // 2. Start BLE Scanning

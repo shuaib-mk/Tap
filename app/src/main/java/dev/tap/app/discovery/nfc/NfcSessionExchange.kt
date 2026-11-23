@@ -43,6 +43,12 @@ object NfcSessionExchange {
     fun enableReaderMode(
         activity: Activity,
         onSessionDiscovered: (SessionOffer) -> Unit
+    ): Boolean = enableReaderMode(activity, onSessionDiscovered, null)
+
+    fun enableReaderMode(
+        activity: Activity,
+        onSessionDiscovered: (SessionOffer) -> Unit,
+        onTagDiscovered: ((Tag) -> Unit)?
     ): Boolean {
         val adapter = NfcAdapter.getDefaultAdapter(activity) ?: return false
         if (!adapter.isEnabled) return false
@@ -56,6 +62,10 @@ object NfcSessionExchange {
         adapter.enableReaderMode(
             activity,
             { tag: Tag ->
+                activity.runOnUiThread {
+                    onTagDiscovered?.invoke(tag)
+                }
+
                 val ndef = Ndef.get(tag)
                 if (ndef != null) {
                     try {

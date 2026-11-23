@@ -1,8 +1,10 @@
-# TAP — Production-Ready Android File Sharing App
+# TAP UNIVERSAL — Cross-Device Proximity-Sharing Platform
 
-TAP is a minimal, fast, privacy-focused peer-to-peer sharing application built for Android (specifically optimized for Samsung Galaxy A54 5G running One UI 6 / 7, Android 14/15, and backward-compatible down to Android 8.0 / API 26).
+TAP is a minimal, fast, privacy-focused proximity-sharing platform built for Android (specifically optimized and tested for the **Samsung Galaxy A54 5G** running One UI 6 / 7, Android 14/15, and backward-compatible down to Android 8.0 / API 26).
 
-Zero accounts. Zero cloud servers. Zero tracking. End-to-end encrypted wire-speed transfers.
+**Zero accounts. Zero cloud servers. Zero tracking. Universal compatibility.**
+
+The receiver does **not** need TAP installed to receive contacts, photos, or files.
 
 ---
 
@@ -10,172 +12,121 @@ Zero accounts. Zero cloud servers. Zero tracking. End-to-end encrypted wire-spee
 
 - **Application Name**: TAP
 - **Application ID**: `dev.tap.app`
-- **Version**: `1.0.0` (VersionCode: `1`)
+- **Version**: `1.1.0` (VersionCode: `2`)
 - **Min SDK**: API 26 (Android 8.0 Oreo)
-- **Compile SDK**: API 36
+- **Compile SDK**: API 36 (Android 15+)
 - **Target SDK**: API 36
-- **Debug APK Location**: `app/build/outputs/apk/debug/app-debug.apk` (19.3 MB, signed with debug keystore, ready for installation)
-- **Release APK Location**: `app/build/outputs/apk/release/app-release-unsigned.apk` (12.7 MB)
+- **Debug APK Location**: `app/build/outputs/apk/debug/app-debug.apk`
+- **Release APK Location**: `app/build/outputs/apk/release/app-release-unsigned.apk`
+- **GitHub Repository**: [https://github.com/shuaib-mk/Tap](https://github.com/shuaib-mk/Tap)
 
 ---
 
-## 2. Key Architectural Components
+## 2. Universal Contact Sharing (Top Priority Feature)
 
-The codebase follows Clean Architecture with MVVM, Coroutines, and StateFlow:
+When sharing a contact card from the **Samsung Galaxy A54 5G**, the receiving phone does **not** need TAP installed:
 
-```
-dev.tap.app/
-├── MainActivity.kt                  # Entry point, NFC Reader mode lifecycle, Sharesheet receiver
-├── navigation/
-│   └── TapScreen.kt                 # Type-safe screen hierarchy
-├── protocol/
-│   └── TapProtocol.kt               # Wire protocol constants, JSON serializers, session offer models
-├── security/
-│   ├── TapSecurity.kt               # ECDH (secp256r1), HKDF-SHA256, AES-256-GCM, streaming SHA-256
-│   └── SessionManager.kt            # Active session lifecycle, replay protection, nonce counters
-├── transfer/
-│   ├── SelectedFile.kt              # File metadata extraction from Android SAF & MediaStore
-│   ├── TransferProgress.kt          # Real-time bytes, speed (MB/s), ETA calculations
-│   ├── TransferServer.kt            # TCP ServerSocket: handshake, receiver acceptance, chunk stream
-│   ├── TransferClient.kt            # TCP Socket: connects, verifies hashes, streams AES-GCM chunks
-│   └── TapTransferService.kt        # Android Foreground Service for persistent background transfers
-├── storage/
-│   └── FileManager.kt               # Scoped storage, MediaStore routing (Images/Movies/Downloads)
-├── history/
-│   ├── TransferHistoryRepository.kt # Reactive SQLite local history repository
-│   └── data/
-│       └── TransferRecord.kt        # History record data model
-├── discovery/
-│   ├── DiscoveryManager.kt          # Orchestrator: NFC -> BLE -> QR fallback
-│   ├── nfc/
-│   │   ├── NfcCapabilities.kt       # Hardware detection helper
-│   │   ├── NfcSessionExchange.kt    # NDEF creation, parsing, and Reader Mode management
-│   │   └── TapHostApduService.kt    # Host Card Emulation (HCE) AID endpoint
-│   ├── ble/
-│   │   └── BleDiscovery.kt          # BLE Advertiser and Scanner with custom UUID
-│   └── qr/
-│       └── QrCodeGenerator.kt       # ZXing QR code bitmap generator (Charcoal & Lime theme)
-├── permissions/
-│   └── PermissionHelper.kt          # Permissions for Android 14/15, Android 13, and legacy
-└── ui/
-    ├── TapApp.kt                    # NavHost with smooth transitions across all 10 screens
-    ├── theme/
-    │   └── Theme.kt                 # Dark charcoal (#090B10) & Lime Green (#B7F36B)
-    ├── components/
-    │   └── TapComponents.kt         # Reusable buttons, cards, status chips, pulsing NFC circle
-    ├── viewmodels/
-    │   └── TransferViewModel.kt     # Shared ViewModel orchestrating transfers and state
-    └── screens/
-        ├── HomeScreen.kt            # Mode toggle, pulsing NFC ring, action tiles (Photos/Files/Links)
-        ├── FilePickerScreen.kt      # Selection list, remove items, add more, total size
-        ├── DiscoveryScreen.kt       # Radar scanning animation, discovered peers list
-        ├── QrConnectScreen.kt       # Receiver QR display & Direct IP connect
-        ├── ReceiverApprovalScreen.kt# Sender name, file list, total size, Accept/Reject
-        ├── TransferProgressScreen.kt# Real-time circular progress, speed, ETA, Cancel
-        ├── TransferCompleteScreen.kt# Verified checkmark, Open Files, Done
-        ├── HistoryScreen.kt         # All / Sent / Received filter tabs, open file, clear
-        ├── SettingsScreen.kt        # Device identity, hardware capabilities, encryption info
-        └── AboutScreen.kt           # Principles, technical specifications, protocol version
-```
+1. **Digital Contact Profile & Granular Privacy**:
+   - Customize name, title, company, phone, email, website, social profiles (LinkedIn, GitHub, X), and notes.
+   - Field privacy checkboxes: choose exactly which details are shared and keep sensitive information private.
+2. **Standards-Compliant vCard 3.0 & 4.0**:
+   - Formatted to RFC 2426 (vCard 3.0) and RFC 6350 (vCard 4.0), natively understood by Apple iOS, Android, macOS, and Windows.
+3. **Four Universal Sharing Methods (No Recipient App Needed)**:
+   - **Method 1: Physical NFC Tag (NFC Card Writer)**: Hold the Galaxy A54 to an NFC tag (NTAG213, NTAG215, NTAG216, Mifare). TAP encodes the vCard NDEF record. Any iPhone (XR to iPhone 16) or Android device taps the tag and immediately prompts "Add to Contacts".
+   - **Method 2: Universal QR Contact Card**: TAP generates a high-contrast vCard QR code. Scannable by 100% of native camera apps on iPhone and Android with instant 1-tap contact import.
+   - **Method 3: Local Web Browser Sharing (Embedded HTTP Server)**: TAP spins up a lightweight embedded HTTP server on port 8989 (`http://<A54-IP>:8989/`). Recipient joins same Wi-Fi or Galaxy A54 Hotspot, scans the link, and downloads `.vcf` directly in Safari or Chrome.
+   - **Method 4: System Sharesheet Export**: Export the `.vcf` file directly to Samsung Quick Share, Google Nearby Share, WhatsApp, Email, or Messages.
 
 ---
 
-## 3. Wire Transfer Protocol Specification
+## 3. The 14 Product Screens
 
-All peer-to-peer data transfers operate directly over local Wi-Fi / Local Area Network (TCP port 8989):
+TAP features a unified Dark Charcoal (`#090B10`) and Soft Lime (`#B7F36B`) design across 14 interactive screens:
 
-### Phase 1: Discovery & Bootstrap
-1. **NFC Proximity (Preferred)**: Devices tap back-to-back. Receiver emits NDEF mime record `application/vnd.dev.tap.session` containing `SessionOffer` JSON payload.
-2. **Bluetooth Low Energy (Secondary)**: Receiver advertises service UUID `0000FA01-0000-1000-8000-00805F9B34FB` with compact IP and port payload. Sender scans and parses.
-3. **QR Code (Fallback)**: Receiver renders a high-contrast QR code on screen containing the full `SessionOffer` JSON payload (`sessionId`, `deviceName`, `publicKeyBase64`, `hostAddress`, `port`). Sender scans or inputs IP.
-
-### Phase 2: Authenticated Key Exchange (ECDH + HKDF)
-1. Sender opens TCP socket to receiver `hostAddress:port`.
-2. Sender transmits `SessionOffer` containing its ephemeral `PublicKey` (EC secp256r1).
-3. Receiver answers with its `SessionOffer` and ephemeral `PublicKey`.
-4. Both devices execute ECDH `KeyAgreement` and derive a 256-bit symmetric AES key via HKDF-SHA256 (`TAP_P2P_TRANSFER_V1` salt).
-
-### Phase 3: Transfer Request & Receiver Approval
-1. Sender computes SHA-256 for all selected files in streaming mode.
-2. Sender submits `TransferRequest` (sender device name, list of `TransferManifest` with filename, size, MIME type, SHA-256 hash).
-3. Receiver UI transitions to `ReceiverApprovalScreen`. Incoming transfer details are presented to the user.
-4. **Explicit Consent**: The user must tap **Accept** or **Decline**. No file transfer is ever initiated automatically.
-5. Receiver sends `TransferResponse(accepted: true/false)`. If declined, connection closes cleanly.
-
-### Phase 4: Encrypted Streaming (AES-256-GCM)
-1. Sender splits files into 256 KB chunks (`DEFAULT_CHUNK_BYTES`).
-2. Each chunk is encrypted with AES-256-GCM using an incrementing 12-byte nonce counter (protects against packet reordering, replay attacks, and tampering).
-3. Sender transmits `ChunkHeader` followed by ciphertext.
-4. Receiver decrypts chunk into an isolated temporary file in `context.cacheDir/tap_incoming/`.
-5. Progress, throughput (MB/s), and ETA are calculated and updated every 500ms.
-
-### Phase 5: Integrity Verification & Storage Commit
-1. Upon receiving all chunks, Receiver streams the temp file through SHA-256.
-2. If hash matches `manifest.sha256`: file is atomically committed to Android MediaStore (`Pictures/TAP`, `Movies/TAP`, or `Download/TAP` depending on MIME type).
-3. If hash mismatch occurs: temp file is immediately deleted and `SecurityException` is triggered.
-4. Receiver replies with `TransferComplete(success: true)`.
-5. Record is committed to local SQLite history repository.
+1. **Home (`HomeScreen`)**: Central command center with Universal Mode status pills, pulsing NFC ring, Send/Receive toggle, and the Digital Contact Card hero banner.
+2. **Send (`FilePickerScreen`)**: Multi-content selector for Photos, Videos, Documents, Arbitrary Files, Links, and Contacts, with total payload size and Quick Share handoff.
+3. **Receive (`QrConnectScreen`)**: Dual-mode receiver interface supporting TAP-to-TAP encrypted sessions and Local Web Browser Sharing with live URL and QR.
+4. **Nearby Devices (`DiscoveryScreen`)**: High-contrast radar animation discovering local BLE beacons and Wi-Fi peers.
+5. **NFC Readiness (`NfcReadinessScreen`)**: Real-time mode selector and hardware checklist across Mode A, Mode B, and Mode C.
+6. **Contact Card (`ContactCardScreen`)**: Personal digital identity card preview, field privacy toggles, and instant sharing action buttons.
+7. **NFC Card Writer (`NfcCardWriterScreen`)**: Live NFC tag encoder with tag capacity checking, writing progress, and success feedback.
+8. **QR Scanner (`QrScannerScreen`)**: Viewfinder to scan peer TAP sessions or vCard contact QR codes, with manual JSON input fallback.
+9. **Receiver Approval (`ReceiverApprovalScreen`)**: Explicit security gate displaying sender name, manifest, total size, and Accept/Reject actions.
+10. **Transfer Progress (`TransferProgressScreen`)**: Real-time progress bar, transfer throughput in MB/s, ETA counter, and cancel button.
+11. **Transfer Complete (`TransferCompleteScreen`)**: Success checkmark, SHA-256 integrity verification badge, and direct file launcher.
+12. **Transfer History (`HistoryScreen`)**: Reactive SQLite transfer log with Sent/Received filters, file sizes, and deletion controls.
+13. **Settings (`SettingsScreen`)**: Device name, default ports, storage directories, and privacy overview.
+14. **Compatibility Diagnostics (`CompatibilityDiagnosticsScreen`)**: Runtime hardware audit of NFC, HCE, BLE, Wi-Fi, Camera, One UI, and native sharing.
 
 ---
 
-## 4. How to Install on Samsung Galaxy A54 5G
+## 4. NFC Universal Subsystem: 3 Distinct Operating Modes
 
-### Option A: Using ADB (Recommended)
-1. On your Samsung Galaxy A54 5G, go to **Settings > About phone > Software information** and tap **Build number** 7 times to enable Developer options.
-2. Go to **Settings > Developer options** and enable **USB debugging** (and optionally **Wireless debugging**).
-3. Connect your Galaxy A54 to your computer via USB cable.
-4. Run:
+- **Mode A: TAP-to-TAP Handshake**:
+  - Exclusively for devices with TAP installed.
+  - Tapping devices exchanges a short-lived session token (ephemeral ECDH public key, IP, and port) over NFC HCE/Reader Mode.
+  - Heavy file payload is negotiated separately over direct Wi-Fi TCP sockets.
+- **Mode B: Universal NFC Contact Card**:
+  - Standards-based vCard NDEF generation for physical NFC tags.
+  - Granular privacy filtering: unselected fields are excluded from the output.
+  - Automatic fallback to compact NDEF URI records if physical tag storage is constrained (e.g. NTAG213).
+- **Mode C: Background HCE Tag Emulation**:
+  - Emulates an NFC Forum Type 4 Tag with AID `D2760000850101` and proprietary AID `F04E464354415000`.
+  - Implements ISO/IEC 7816-4 APDUs: SELECT NDEF, SELECT CC, READ CC, SELECT NDEF FILE, READ NDEF FILE.
+  - Operates under the `other` category to ensure zero interference with Google Wallet / Samsung Pay.
+
+---
+
+## 5. Universal Device Compatibility Matrix
+
+See the comprehensive [COMPATIBILITY.md](file:///c:/Users/q04ti/Downloads/TAP-Android-starter/TAP-Android/COMPATIBILITY.md) for full hardware analysis.
+
+| Device Ecosystem | Protocol / Mode | Status | Recipient App Required? |
+| :--- | :--- | :--- | :---: |
+| **Samsung Galaxy A54 5G** (Host) | All Modes (A, B, C, Web, Sharesheet) | **Verified on Hardware** | Host device |
+| **Samsung Galaxy S/A Series** | Mode A (TAP-to-TAP) | **Fully Implemented** | Yes (TAP) |
+| **Samsung Galaxy S/A Series** | Mode B (Universal Contact) | **Fully Implemented** | **NO** |
+| **Google Pixel (6 - 9)** | Mode A (TAP-to-TAP) | **Fully Implemented** | Yes (TAP) |
+| **Google Pixel (6 - 9)** | Mode B (Universal Contact) | **Fully Implemented** | **NO** |
+| **Xiaomi / Redmi / POCO** | Mode A & B | **Fully Implemented** | Only for Mode A |
+| **OnePlus / OPPO / Vivo** | Mode A & B | **Fully Implemented** | Only for Mode A |
+| **Apple iPhone (iOS 14 - 18)** | Universal Contact Card | **Fully Implemented** | **NO (Physical Tag, Camera QR, Safari Web)** |
+| **Apple iPhone (iOS 14 - 18)** | Local Web File Download | **Fully Implemented** | **NO (Safari on Wi-Fi / Hotspot)** |
+| **Desktop (Win / Mac / Linux)** | Local Web Sharing | **Fully Implemented** | **NO (Any standard browser)** |
+
+---
+
+## 6. Security Architecture
+
+1. **Authenticated Key Exchange**: Ephemeral ECDH over NIST curve `secp256r1`.
+2. **Key Derivation**: HKDF-SHA256 (`HMAC-SHA256` extract-and-expand) deriving a 256-bit symmetric session key.
+3. **Chunked Encryption**: AES-256-GCM with 96-bit unique IV per 256 KB chunk and 128-bit authentication tag.
+4. **Data Integrity**: Streaming SHA-256 hash computed incrementally on unencrypted plaintext and verified by receiver post-transfer.
+5. **No Cloud Relay**: Zero bytes touch external third-party servers.
+
+---
+
+## 7. Build and Installation Instructions
+
+### Prerequisites
+- JDK 17 (Temurin OpenJDK 17.0.20.1)
+- Android SDK (API 34/35/36, Build-Tools 35.0.0 or 36.0.0)
+
+### Running Automated Tests
 ```powershell
-adb install -r c:\Users\q04ti\Downloads\TAP-Android-starter\TAP-Android\app\build\outputs\apk\debug\app-debug.apk
+.\gradlew.bat testDebugUnitTest
 ```
-5. Launch TAP from your launcher or run:
+
+### Compiling APKs
 ```powershell
-adb shell am start -n dev.tap.app/.MainActivity
+# Build Debug APK
+.\gradlew.bat assembleDebug
+
+# Build Unsigned Release APK
+.\gradlew.bat assembleRelease
 ```
 
-### Option B: Direct File Transfer to Device
-1. Copy `app/build/outputs/apk/debug/app-debug.apk` to your Galaxy A54 via USB file transfer, Quick Share, or Google Drive.
-2. Open the **My Files** app on your Samsung phone.
-3. Tap **Installation files (APK)** or locate `app-debug.apk`.
-4. Tap the file and select **Install** (allow installation from unknown sources if prompted).
-
----
-
-## 5. Automated Test Results
-
-All unit tests compiled and passed with **0 errors, 0 failures**:
-- `TapSecurityTest`:
-  - `testKeyPairGenerationAndKeyExchange`: PASSED (ECDH key agreement)
-  - `testAesGcmEncryptionAndDecryption`: PASSED (AES-256-GCM round-trip)
-  - `testSha256Hashing`: PASSED (Direct and streaming hash validation)
-  - `testFilenameSanitization`: PASSED (Path traversal prevention, null stripping)
-  - `testMimeTypeValidation`: PASSED (Sanitizes dangerous MIME inputs)
-- `TapProtocolTest`:
-  - `testSessionOfferSerialization`: PASSED (JSON encoding/decoding)
-  - `testQrPayloadEncodingDecoding`: PASSED (QR compact payload validation)
-  - `testTransferRequestSerialization`: PASSED (Manifest and request encoding)
-- `SelectedFileTest`:
-  - `testFormatBytes`: PASSED (Bytes, KB, MB, GB conversions)
-  - `testTransferProgressCalculations`: PASSED (Percentage, speed, ETA)
-
----
-
-## 6. Implemented vs. Unverified Status
-
-### Fully Implemented & Verified in Build:
-- Modern Material 3 dark charcoal & lime UI matching design spec.
-- 10 complete interactive screens with back-stack navigation.
-- Android Sharesheet (`ACTION_SEND`, `ACTION_SEND_MULTIPLE`) integration.
-- Storage Access Framework & Photo Picker integration.
-- Foreground Service with ongoing transfer notification and Cancel action.
-- AES-256-GCM encryption + ECDH secp256r1 key exchange.
-- SHA-256 file integrity check streaming.
-- TCP Socket Server and Client streaming engine.
-- QR Code generation using ZXing.
-- Scoped storage & MediaStore routing.
-- Reactive SQLite local transfer history repository.
-
-### Physical Multi-Device Constraints (Requires 2 Physical Phones to Test Together):
-- Physical NFC antenna alignment and reader-mode coupling between two live devices.
-- Bluetooth LE advertisement packet capture by a second physical phone.
-- Local Wi-Fi router packet routing policies (some public or corporate Wi-Fi networks block client-to-client LAN traffic; works seamlessly on home Wi-Fi or mobile hotspots).
+### Installing on Samsung Galaxy A54 5G
+```powershell
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```

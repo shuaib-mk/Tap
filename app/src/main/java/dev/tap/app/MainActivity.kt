@@ -45,10 +45,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Enable NFC reader mode for device-to-device tapping
-        NfcSessionExchange.enableReaderMode(this) { offer ->
-            viewModel.connectAndSend(offer)
-        }
+        // Enable NFC reader mode for device-to-device tapping and tag writing
+        NfcSessionExchange.enableReaderMode(
+            this,
+            onSessionDiscovered = { offer ->
+                viewModel.connectAndSend(offer)
+            },
+            onTagDiscovered = { tag ->
+                viewModel.handleNfcTagDiscovered(tag)
+            }
+        )
     }
 
     override fun onPause() {

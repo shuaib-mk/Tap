@@ -32,14 +32,19 @@ fun TapApp(viewModel: TransferViewModel = viewModel()) {
         ) { screen ->
             when (screen) {
                 is TapScreen.Home -> HomeScreen(viewModel)
-                is TapScreen.FilePicker -> FilePickerScreen(viewModel)
-                is TapScreen.Discovery -> DiscoveryScreen(viewModel)
-                is TapScreen.QrConnect -> QrConnectScreen(viewModel)
+                is TapScreen.Send, is TapScreen.FilePicker -> FilePickerScreen(viewModel)
+                is TapScreen.Receive, is TapScreen.QrConnect -> QrConnectScreen(viewModel)
+                is TapScreen.NearbyDevices, is TapScreen.Discovery -> DiscoveryScreen(viewModel)
+                is TapScreen.NfcReadiness -> NfcReadinessScreen(viewModel)
+                is TapScreen.ContactCard -> ContactCardScreen(viewModel)
+                is TapScreen.NfcCardWriter -> NfcCardWriterScreen(viewModel)
+                is TapScreen.QrScanner -> QrScannerScreen(viewModel)
                 is TapScreen.ReceiverApproval -> ReceiverApprovalScreen(viewModel)
                 is TapScreen.TransferProgress -> TransferProgressScreen(viewModel)
                 is TapScreen.TransferComplete -> TransferCompleteScreen(viewModel)
                 is TapScreen.History -> HistoryScreen(viewModel)
                 is TapScreen.Settings -> SettingsScreen(viewModel)
+                is TapScreen.CompatibilityDiagnostics -> CompatibilityDiagnosticsScreen(viewModel)
                 is TapScreen.About -> AboutScreen(viewModel)
             }
         }

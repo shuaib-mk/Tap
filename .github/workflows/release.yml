@@ -45,8 +45,8 @@ jobs:
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: "TAP v1.0.0 — Production Android Release"
+          tag_name: ${{ github.ref_name != 'main' && github.ref_name || 'v1.1.0' }}
+          name: "TAP v1.1.0 — Universal Cross-Device Proximity Release"
           files: |
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/release/app-release-unsigned.apk

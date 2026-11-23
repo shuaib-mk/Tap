@@ -3,15 +3,22 @@ package dev.tap.app.ui.viewmodels
 import android.app.Application
 import android.content.Context
 import android.net.Uri
+import android.nfc.Tag
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dev.tap.app.capabilities.CompatibilityEngine
+import dev.tap.app.capabilities.DeviceCapabilities
+import dev.tap.app.contacts.ContactCard
+import dev.tap.app.contacts.ContactCardRepository
 import dev.tap.app.discovery.DiscoveryManager
 import dev.tap.app.discovery.DiscoveryState
 import dev.tap.app.discovery.ble.BleDiscovery
+import dev.tap.app.discovery.nfc.NfcTagWriter
 import dev.tap.app.discovery.qr.QrCodeGenerator
 import dev.tap.app.history.TransferHistoryRepository
 import dev.tap.app.history.data.TransferRecord
+import dev.tap.app.native.NativeSharingAdapter
 import dev.tap.app.navigation.TapScreen
 import dev.tap.app.nfc.NfcCapabilities
 import dev.tap.app.protocol.*
@@ -23,6 +30,20 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+sealed class NfcWriteUiState {
+    object Idle : NfcWriteUiState()
+    object WaitingForTag : NfcWriteUiState()
+    object Writing : NfcWriteUiState()
+    data class Success(val bytesWritten: Int, val tagCapacity: Int) : NfcWriteUiState()
+    data class Error(val message: String) : NfcWriteUiState()
+}
+
+enum class NfcMode {
+    MODE_A_TAP_TO_TAP,
+    MODE_B_CONTACT_CARD,
+    MODE_C_BACKGROUND_HCE
+}
+
 class TransferViewModel(application: Application) : AndroidViewModel(application) {
 
     private val sessionManager = SessionManager()
@@ -32,6 +53,8 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
 
     private val transferServer = TransferServer(application, sessionManager, historyRepo)
     private val transferClient = TransferClient(application, sessionManager, historyRepo)
+    private val localHttpServer = LocalHttpServer(application)
+    private val contactRepo = ContactCardRepository.getInstance(application)
 
     // Navigation state
     private val _currentScreen = MutableStateFlow<TapScreen>(TapScreen.Home)
@@ -39,14 +62,29 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
 
     private val _backStack = mutableListOf<TapScreen>(TapScreen.Home)
 
-    // Home / Mode state
-    private val _mode = MutableStateFlow("Send") // "Send" or "Receive"
+    // Mode state ("Send" vs "Receive")
+    private val _mode = MutableStateFlow("Send")
     val mode: StateFlow<String> = _mode.asStateFlow()
 
-    // Device identity
+    // Device identity & Capabilities
     val deviceName: String = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}"
 
-    // Selected files
+    private val _capabilities = MutableStateFlow(CompatibilityEngine.detectCapabilities(application))
+    val capabilities: StateFlow<DeviceCapabilities> = _capabilities.asStateFlow()
+
+    // Contact Card
+    private val _contactCard = MutableStateFlow(contactRepo.getContactCard())
+    val contactCard: StateFlow<ContactCard> = _contactCard.asStateFlow()
+
+    // NFC Mode
+    private val _nfcMode = MutableStateFlow(NfcMode.MODE_B_CONTACT_CARD)
+    val nfcMode: StateFlow<NfcMode> = _nfcMode.asStateFlow()
+
+    // NFC Tag Writer State
+    private val _nfcWriteState = MutableStateFlow<NfcWriteUiState>(NfcWriteUiState.Idle)
+    val nfcWriteState: StateFlow<NfcWriteUiState> = _nfcWriteState.asStateFlow()
+
+    // Selected files for sending
     private val _selectedFiles = MutableStateFlow<List<SelectedFile>>(emptyList())
     val selectedFiles: StateFlow<List<SelectedFile>> = _selectedFiles.asStateFlow()
 
@@ -62,6 +100,13 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     private val _qrBitmap = MutableStateFlow<android.graphics.Bitmap?>(null)
     val qrBitmap: StateFlow<android.graphics.Bitmap?> = _qrBitmap.asStateFlow()
 
+    // Local Web Server State (No-app receiver mode)
+    private val _isHttpServerRunning = MutableStateFlow(false)
+    val isHttpServerRunning: StateFlow<Boolean> = _isHttpServerRunning.asStateFlow()
+
+    private val _httpServerUrl = MutableStateFlow("")
+    val httpServerUrl: StateFlow<String> = _httpServerUrl.asStateFlow()
+
     // Transfer Progress
     val serverProgress: StateFlow<TransferProgress> = transferServer.progress
     val clientProgress: StateFlow<TransferProgress> = transferClient.progress
@@ -72,12 +117,11 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     // Pending incoming request on receiver
     val pendingIncomingRequest: StateFlow<TransferRequest?> = transferServer.pendingRequest
 
-    // Capabilities
     val nfcCapabilities: NfcCapabilities get() = NfcCapabilities.from(getApplication())
     val isBleAvailable: Boolean get() = bleDiscovery.isAvailable && bleDiscovery.isEnabled
 
     init {
-        // Collect server progress to trigger foreground service notifications
+        // Collect server progress
         viewModelScope.launch {
             serverProgress.collect { prog ->
                 when (prog.state) {
@@ -146,6 +190,86 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
             return true
         }
         return false
+    }
+
+    fun refreshCapabilities() {
+        _capabilities.value = CompatibilityEngine.detectCapabilities(getApplication())
+    }
+
+    // Contact Card Management
+    fun updateContactCard(card: ContactCard) {
+        _contactCard.value = card
+        contactRepo.saveContactCard(card)
+    }
+
+    fun toggleContactCardField(field: String) {
+        val updated = _contactCard.value.toggleField(field)
+        updateContactCard(updated)
+    }
+
+    fun resetContactCard() {
+        val def = contactRepo.resetToDefault()
+        _contactCard.value = def
+    }
+
+    fun setNfcMode(mode: NfcMode) {
+        _nfcMode.value = mode
+    }
+
+    // NFC Tag Writer
+    fun startNfcTagWriter() {
+        _nfcWriteState.value = NfcWriteUiState.WaitingForTag
+        navigateTo(TapScreen.NfcCardWriter)
+    }
+
+    fun resetNfcWriteState() {
+        _nfcWriteState.value = NfcWriteUiState.Idle
+    }
+
+    fun handleNfcTagDiscovered(tag: Tag) {
+        if (_nfcWriteState.value is NfcWriteUiState.WaitingForTag || _nfcWriteState.value is NfcWriteUiState.Writing) {
+            _nfcWriteState.value = NfcWriteUiState.Writing
+            viewModelScope.launch {
+                val fallbackUrl = if (_isHttpServerRunning.value) _httpServerUrl.value else _contactCard.value.website
+                val res = NfcTagWriter.writeContactCard(tag, _contactCard.value, fallbackUrl)
+                when (res) {
+                    is NfcTagWriter.WriteResult.Success -> {
+                        _nfcWriteState.value = NfcWriteUiState.Success(res.bytesWritten, res.tagCapacity)
+                    }
+                    is NfcTagWriter.WriteResult.Error -> {
+                        _nfcWriteState.value = NfcWriteUiState.Error(res.message)
+                    }
+                }
+            }
+        }
+    }
+
+    // Local HTTP Server (Universal browser sharing for non-TAP devices)
+    fun toggleLocalHttpServer(includeFiles: Boolean = true) {
+        if (_isHttpServerRunning.value) {
+            stopLocalHttpServer()
+        } else {
+            startLocalHttpServer(includeFiles)
+        }
+    }
+
+    fun startLocalHttpServer(includeFiles: Boolean = true) {
+        val ip = _capabilities.value.localIpAddress ?: TransferServer.getLocalIpAddress()
+        val card = _contactCard.value
+        val files = if (includeFiles) _selectedFiles.value else emptyList()
+
+        val res = localHttpServer.start(hostAddress = ip, port = LocalHttpServer.DEFAULT_WEB_PORT, contactCard = card, files = files)
+        if (res.isSuccess) {
+            _isHttpServerRunning.value = true
+            _httpServerUrl.value = res.getOrThrow()
+            _qrBitmap.value = QrCodeGenerator.generateQrBitmap(_httpServerUrl.value)
+        }
+    }
+
+    fun stopLocalHttpServer() {
+        localHttpServer.stop()
+        _isHttpServerRunning.value = false
+        _httpServerUrl.value = ""
     }
 
     // Mode
@@ -224,6 +348,18 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    // Native Sharesheet Integration
+    fun shareContactViaSharesheet() {
+        NativeSharingAdapter.shareContactCard(getApplication(), _contactCard.value)
+    }
+
+    fun shareSelectedFilesViaSharesheet() {
+        val uris = ArrayList(_selectedFiles.value.map { it.uri })
+        if (uris.isNotEmpty()) {
+            NativeSharingAdapter.shareFiles(getApplication(), uris)
+        }
+    }
+
     // Receiver decision
     fun acceptIncomingTransfer() {
         transferServer.respondToRequest(true)
@@ -261,5 +397,6 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         super.onCleared()
         transferServer.stop()
         transferClient.cancel()
+        localHttpServer.stop()
     }
 }

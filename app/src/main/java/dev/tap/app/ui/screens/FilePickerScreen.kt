@@ -130,11 +130,22 @@ fun FilePickerScreen(viewModel: TransferViewModel) {
             Spacer(Modifier.height(16.dp))
 
             TapButton(
-                text = "Continue to Send",
-                onClick = { viewModel.navigateTo(TapScreen.Discovery) },
+                text = "Continue to Send (TAP Direct)",
+                onClick = { viewModel.navigateTo(TapScreen.NearbyDevices) },
                 enabled = selectedFiles.isNotEmpty(),
                 isPrimary = true
             )
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { viewModel.shareSelectedFilesViaSharesheet() },
+                enabled = selectedFiles.isNotEmpty(),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = TapAccent),
+                border = androidx.compose.foundation.BorderStroke(1.dp, if (selectedFiles.isNotEmpty()) TapAccent else TapBorder),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().height(48.dp)
+            ) {
+                Text("Share via System Sharesheet / Quick Share", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            }
             Spacer(Modifier.height(16.dp))
         }
     }

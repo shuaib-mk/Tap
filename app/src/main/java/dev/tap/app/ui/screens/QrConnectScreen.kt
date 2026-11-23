@@ -33,10 +33,13 @@ fun QrConnectScreen(viewModel: TransferViewModel) {
     val qrBitmap by viewModel.qrBitmap.collectAsState()
     val sessionOffer by viewModel.sessionOffer.collectAsState()
 
-    var selectedTab by remember { mutableIntStateOf(0) } // 0 = Show QR, 1 = Manual IP Connect
+    var selectedTab by remember { mutableIntStateOf(0) } // 0 = Show QR, 1 = Local Web Sharing, 2 = Direct Connect
     var targetIp by remember { mutableStateOf("") }
     var targetPort by remember { mutableStateOf(TapProtocol.DEFAULT_PORT.toString()) }
     var qrPayloadInput by remember { mutableStateOf("") }
+
+    val isHttpRunning by viewModel.isHttpServerRunning.collectAsState()
+    val httpUrl by viewModel.httpServerUrl.collectAsState()
 
     LaunchedEffect(Unit) {
         if (sessionOffer == null) {
@@ -71,12 +74,17 @@ fun QrConnectScreen(viewModel: TransferViewModel) {
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    text = { Text("Receiver QR", fontWeight = FontWeight.Bold) }
+                    text = { Text("TAP QR", fontWeight = FontWeight.Bold, fontSize = 13.sp) }
                 )
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    text = { Text("Direct Connect", fontWeight = FontWeight.Bold) }
+                    text = { Text("Web Share", fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+                )
+                Tab(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    text = { Text("Direct IP", fontWeight = FontWeight.Bold, fontSize = 13.sp) }
                 )
             }
 
@@ -85,14 +93,14 @@ fun QrConnectScreen(viewModel: TransferViewModel) {
             if (selectedTab == 0) {
                 // Show QR Code for peer to scan
                 Text(
-                    "Scan to Connect",
+                    "Scan to Connect (TAP-to-TAP)",
                     color = Color.White,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "The sender device scans this QR code to initiate end-to-end encrypted transfer.",
+                    "The sender device running TAP scans this QR code to initiate transfer.",
                     color = TapMuted,
                     fontSize = 13.sp,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -134,6 +142,52 @@ fun QrConnectScreen(viewModel: TransferViewModel) {
                         }
                     }
                 }
+
+            } else if (selectedTab == 1) {
+                // Local Web Server (No app needed for receiver!)
+                Text(
+                    "Local Web Sharing",
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Receivers on ANY phone or computer (iPhone, Android, Windows, Mac) can open their browser and download shared contacts & files. No app required!",
+                    color = TapMuted,
+                    fontSize = 13.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+
+                Spacer(Modifier.height(20.dp))
+
+                if (isHttpRunning) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(TapPanel)
+                            .border(1.5.dp, TapAccent, RoundedCornerShape(16.dp))
+                            .padding(20.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("HTTP SERVER RUNNING", color = TapAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Spacer(Modifier.height(8.dp))
+                            Text(httpUrl, color = Color.White, fontWeight = FontWeight.Black, fontSize = 20.sp)
+                            Spacer(Modifier.height(6.dp))
+                            Text("Point recipient's camera or browser to this URL", color = TapMuted, fontSize = 12.sp)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(20.dp))
+
+                TapButton(
+                    text = if (isHttpRunning) "Stop Web Server" else "Start Web Server",
+                    onClick = { viewModel.toggleLocalHttpServer(includeFiles = true) },
+                    isPrimary = !isHttpRunning
+                )
 
             } else {
                 // Direct IP / Payload Connect
