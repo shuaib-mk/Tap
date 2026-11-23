@@ -30,6 +30,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+data class BeamedContactEvent(
+    val card: ContactCard,
+    val isTwoWay: Boolean
+)
+
 sealed class NfcWriteUiState {
     object Idle : NfcWriteUiState()
     object WaitingForTag : NfcWriteUiState()
@@ -206,6 +211,18 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
 
     fun deactivateBeam() {
         nfcSettingsRepo.deactivateBeam()
+    }
+
+    // In-App Apple NameDrop-style Beamed Contact Event
+    private val _beamedContactEvent = MutableStateFlow<BeamedContactEvent?>(null)
+    val beamedContactEvent: StateFlow<BeamedContactEvent?> = _beamedContactEvent.asStateFlow()
+
+    fun showBeamedContact(card: ContactCard, isTwoWay: Boolean) {
+        _beamedContactEvent.value = BeamedContactEvent(card, isTwoWay)
+    }
+
+    fun dismissBeamedContact() {
+        _beamedContactEvent.value = null
     }
 
     private val _nfcMode = MutableStateFlow(NfcMode.MODE_B_CONTACT_CARD)

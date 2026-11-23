@@ -1,5 +1,7 @@
 package dev.tap.app.ui
 
+import android.content.Intent
+import android.provider.ContactsContract
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.layout.fillMaxSize
@@ -8,15 +10,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.tap.app.navigation.TapScreen
+import dev.tap.app.ui.components.BeamedContactDialog
 import dev.tap.app.ui.components.TapInk
 import dev.tap.app.ui.screens.*
 import dev.tap.app.ui.viewmodels.TransferViewModel
 
 @Composable
 fun TapApp(viewModel: TransferViewModel = viewModel()) {
+    val context = LocalContext.current
     val currentScreen by viewModel.currentScreen.collectAsState()
+    val beamedContact by viewModel.beamedContactEvent.collectAsState()
 
     BackHandler(enabled = currentScreen !is TapScreen.Home) {
         viewModel.navigateBack()
@@ -48,6 +54,30 @@ fun TapApp(viewModel: TransferViewModel = viewModel()) {
                 is TapScreen.About -> AboutScreen(viewModel)
                 is TapScreen.ProximityShare -> ProximityShareScreen(viewModel)
             }
+        }
+
+        // Apple NameDrop-style Minimal In-App Contact Card Exchange
+        beamedContact?.let { event ->
+            BeamedContactDialog(
+                card = event.card,
+                isTwoWay = event.isTwoWay,
+                onSaveToContacts = {
+                    val insertIntent = Intent(Intent.ACTION_INSERT, ContactsContract.Contacts.CONTENT_URI).apply {
+                        putExtra(ContactsContract.Intents.Insert.NAME, event.card.displayName)
+                        putExtra(ContactsContract.Intents.Insert.COMPANY, event.card.company)
+                        putExtra(ContactsContract.Intents.Insert.JOB_TITLE, event.card.jobTitle)
+                        putExtra(ContactsContract.Intents.Insert.PHONE, event.card.phone)
+                        putExtra(ContactsContract.Intents.Insert.EMAIL, event.card.email)
+                        putExtra(ContactsContract.Intents.Insert.NOTES, event.card.notes)
+                    }
+                    try {
+                        context.startActivity(insertIntent)
+                    } catch (_: Exception) {}
+                },
+                onDismiss = {
+                    viewModel.dismissBeamedContact()
+                }
+            )
         }
     }
 }

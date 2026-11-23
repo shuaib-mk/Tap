@@ -1,6 +1,7 @@
 package dev.tap.app
 
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.nfc.NfcAdapter
@@ -157,11 +158,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun showContactCardImportPrompt(card: ContactCard) {
-        Toast.makeText(this, "Received contact for ${card.displayName}", Toast.LENGTH_SHORT).show()
+        val nfcRepo = NfcSettingsRepository.getInstance(this@MainActivity)
+        val isMyBeamActive = nfcRepo.isBackgroundSharingEnabled()
+        val isPeerTwoWay = card.beamRendezvousId.isNotBlank()
 
-        // Bidirectional Contact Exchange: If peer's card includes a beam rendezvous ID,
-        // instantly post our own contact card so both devices exchange simultaneously in one physical tap!
-        if (card.beamRendezvousId.isNotBlank()) {
+        // Two-way sharing ONLY occurs if BOTH sides have TAP Beam turned ON!
+        // If local user has Beam OFF, we receive their card, but do NOT send our card back.
+        if (isMyBeamActive && isPeerTwoWay) {
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
                     val myCard = ContactCardRepository.getInstance(this@MainActivity).getContactCard()
@@ -176,17 +179,19 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        val insertIntent = Intent(Intent.ACTION_INSERT, ContactsContract.Contacts.CONTENT_URI).apply {
-            putExtra(ContactsContract.Intents.Insert.NAME, card.displayName)
-            putExtra(ContactsContract.Intents.Insert.COMPANY, card.company)
-            putExtra(ContactsContract.Intents.Insert.JOB_TITLE, card.jobTitle)
-            putExtra(ContactsContract.Intents.Insert.PHONE, card.phone)
-            putExtra(ContactsContract.Intents.Insert.EMAIL, card.email)
-            putExtra(ContactsContract.Intents.Insert.NOTES, card.notes)
-        }
+        // Tactile subtle haptic pulse on contact receipt
         try {
-            startActivity(insertIntent)
+            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator?.vibrate(android.os.VibrationEffect.createOneShot(45, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(45)
+            }
         } catch (_: Exception) {}
+
+        // Present Apple NameDrop-style in-app animated card
+        viewModel.showBeamedContact(card, isTwoWay = isMyBeamActive && isPeerTwoWay)
     }
 
     private fun manageBeamSignalingChannel(isBeamActive: Boolean, beamId: String) {
