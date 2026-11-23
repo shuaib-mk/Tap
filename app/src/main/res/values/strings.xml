@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">TAP</string>
+    <string name="nfc_service_description">TAP device handshake</string>
+    <string name="nfc_aid_description">TAP</string>
+</resources>
