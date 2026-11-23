@@ -2,6 +2,7 @@ package dev.tap.app.proximity
 
 import org.junit.Assert.*
 import org.junit.Test
+import java.io.ByteArrayInputStream
 
 class ProximitySharingTest {
 
@@ -30,78 +31,177 @@ class ProximitySharingTest {
     }
 
     @Test
-    fun testTransferSecurityKeyAgreementAndAesGcmEncryption() {
-        // Endpoint 1 (Alice / Galaxy A54)
+    fun testSessionBoundKeyDerivationAndAesGcm() {
+        val sessionId = "session_test_9981"
+        val senderId = "device_a54"
+        val receiverId = "device_s24"
+
         val aliceSecurity = TransferSecurityManager()
-        val alicePubKeyBase64 = aliceSecurity.getPublicKeyBase64()
+        val alicePub = aliceSecurity.getPublicKeyBase64()
 
-        // Endpoint 2 (Bob / Galaxy S24)
         val bobSecurity = TransferSecurityManager()
-        val bobPubKeyBase64 = bobSecurity.getPublicKeyBase64()
+        val bobPub = bobSecurity.getPublicKeyBase64()
 
-        // Ephemeral ECDH key agreement + HKDF-SHA256
-        val aliceSharedKey = aliceSecurity.deriveSessionKey(bobPubKeyBase64)
-        val bobSharedKey = bobSecurity.deriveSessionKey(alicePubKeyBase64)
+        // Derive keys bound to session and identity
+        val aliceKey = aliceSecurity.deriveSessionKey(bobPub, sessionId, senderId, receiverId)
+        val bobKey = bobSecurity.deriveSessionKey(alicePub, sessionId, senderId, receiverId)
 
-        assertArrayEquals("Derived session keys must be cryptographically identical", aliceSharedKey, bobSharedKey)
-        assertEquals("Derived key must be 32 bytes (AES-256)", 32, aliceSharedKey.size)
+        assertArrayEquals("Derived session keys must match", aliceKey, bobKey)
+        assertEquals(32, aliceKey.size)
 
-        // AES-256-GCM chunk encryption
-        val plaintext = "Hello from Samsung Galaxy A54 Proximity File Sharing!".toByteArray(Charsets.UTF_8)
-        val encryptedChunk = aliceSecurity.encryptChunk(aliceSharedKey, nonceCounter = 0L, plaintext = plaintext)
+        // Encrypt with monotonic chunk index 0
+        val plaintext = "Encrypted chunk payload with monotonic nonce".toByteArray(Charsets.UTF_8)
+        val encrypted = aliceSecurity.encryptChunk(aliceKey, chunkIndex = 0L, plaintext = plaintext, isSender = true, sessionId = sessionId)
 
-        // Verify cipher output contains 12-byte IV + ciphertext + 16-byte tag
-        assertTrue(encryptedChunk.size >= 12 + plaintext.size + 16)
+        // Must contain 12-byte IV + ciphertext + 16-byte GCM tag
+        assertTrue(encrypted.size >= 12 + plaintext.size + 16)
 
-        // Decrypt with Bob's shared key
-        val decrypted = bobSecurity.decryptChunk(bobSharedKey, encryptedChunk)
-        assertEquals("Hello from Samsung Galaxy A54 Proximity File Sharing!", String(decrypted, Charsets.UTF_8))
+        // Decrypt
+        val decrypted = bobSecurity.decryptChunk(bobKey, encrypted)
+        assertEquals("Encrypted chunk payload with monotonic nonce", String(decrypted, Charsets.UTF_8))
     }
 
     @Test
-    fun testDeviceHandshakeSessionNegotiation() {
-        val aliceSecurity = TransferSecurityManager()
-        val aliceHandshake = DeviceHandshakeManager(aliceSecurity)
+    fun testShortAuthenticationStringMitmProtection() {
+        val sessionId = "session_secure_sas_123"
 
-        // Alice creates session offer
-        val offer = aliceHandshake.createSessionOffer(
-            deviceName = "Galaxy A54",
-            hostAddress = "192.168.1.100",
-            port = 8990
+        val alice = TransferSecurityManager()
+        val alicePub = alice.getPublicKeyBase64()
+
+        val bob = TransferSecurityManager()
+        val bobPub = bob.getPublicKeyBase64()
+
+        // Both compute shared secret and SAS independently
+        val aliceSas = alice.calculateSasCode(bobPub, sessionId)
+        val bobSas = bob.calculateSasCode(alicePub, sessionId)
+
+        // SAS code must be identical on both physical devices
+        assertEquals("Alice and Bob SAS codes must match identically", aliceSas, bobSas)
+        // Must be formatted as 6 digits with a space: "XXX XXX"
+        assertEquals(7, aliceSas.length)
+        assertTrue(aliceSas.matches(Regex("\\d{3} \\d{3}")))
+
+        // Test MITM attacker Eve with different key
+        val eve = TransferSecurityManager()
+        val evePub = eve.getPublicKeyBase64()
+        val eveSas = eve.calculateSasCode(alicePub, sessionId)
+
+        assertNotEquals("Eve cannot produce matching SAS code", aliceSas, eveSas)
+    }
+
+    @Test
+    fun testHandshakeProtocolOfferAndApproval() {
+        val sessionId = "session_handshake_456"
+        val alice = TransferSecurityManager()
+        val bob = TransferSecurityManager()
+
+        val aliceHandshake = DeviceHandshakeManager(alice)
+        val bobHandshake = DeviceHandshakeManager(bob)
+
+        val manifests = listOf(
+            ProximityFileManifest(
+                name = "report.pdf",
+                sizeBytes = 2048,
+                mimeType = "application/pdf",
+                sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            )
         )
 
-        assertEquals("Galaxy A54", offer.deviceName)
-        assertEquals("192.168.1.100", offer.hostAddress)
-        assertEquals(8990, offer.port)
-        assertNotNull(offer.publicKeyBase64)
+        // Alice creates offer
+        val offer = aliceHandshake.createSessionOffer(
+            deviceName = "Galaxy A54",
+            deviceId = "a54_device",
+            hostAddress = "192.168.1.50",
+            port = 8990,
+            files = manifests,
+            sessionId = sessionId
+        )
 
-        // Bob receives offer and completes handshake
-        val bobSecurity = TransferSecurityManager()
-        val bobHandshake = DeviceHandshakeManager(bobSecurity)
+        assertEquals("Galaxy A54", offer.senderDeviceName)
+        assertEquals(1, offer.files.size)
 
-        val handshakeResult = bobHandshake.completeHandshake(offer)
-        assertTrue("Handshake state must be Authenticated", handshakeResult is HandshakeState.Authenticated)
+        // Bob evaluates offer -> enters AwaitingApproval with SAS code
+        val evalState = bobHandshake.evaluateIncomingOffer(offer, receiverDeviceId = "s24_device")
+        assertTrue("State must be AwaitingApproval", evalState is HandshakeState.AwaitingApproval)
+        val awaiting = evalState as HandshakeState.AwaitingApproval
 
-        val authenticated = handshakeResult as HandshakeState.Authenticated
-        assertEquals("Galaxy A54", authenticated.peer.deviceName)
+        val aliceSas = alice.calculateSasCode(bob.getPublicKeyBase64(), sessionId)
+        assertEquals("Awaiting approval SAS code must match Alice SAS code", aliceSas, awaiting.sasCode)
 
-        // Verify that Alice can derive the exact same session key using Bob's public key
-        val aliceSessionKey = aliceSecurity.deriveSessionKey(bobSecurity.getPublicKeyBase64())
-        assertArrayEquals("Handshake authenticated session keys must match", aliceSessionKey, authenticated.sessionKey)
+        // Bob accepts and creates response
+        val bobResponse = ProximityHandshakeResponse(
+            sessionId = sessionId,
+            receiverDeviceName = "Galaxy S24",
+            receiverDeviceId = "s24_device",
+            receiverPublicKeyBase64 = bob.getPublicKeyBase64(),
+            accepted = true,
+            sasCode = awaiting.sasCode
+        )
+
+        // Alice processes response -> enters Approved with matching session key
+        val finalState = aliceHandshake.processReceiverResponse(offer, bobResponse)
+        assertTrue("State must be Approved", finalState is HandshakeState.Approved)
+        val approved = finalState as HandshakeState.Approved
+
+        val expectedKey = alice.deriveSessionKey(bob.getPublicKeyBase64(), sessionId, "a54_device", "s24_device")
+        assertArrayEquals("Session keys derived after handshake must match", expectedKey, approved.sessionKey)
     }
 
     @Test
-    fun testProximityProgressFormatting() {
+    fun testHandshakeRejection() {
+        val sessionId = "session_reject_789"
+        val alice = TransferSecurityManager()
+        val aliceHandshake = DeviceHandshakeManager(alice)
+
+        val offer = aliceHandshake.createSessionOffer(
+            deviceName = "Galaxy A54",
+            deviceId = "a54_device",
+            hostAddress = "192.168.1.50",
+            port = 8990,
+            files = emptyList(),
+            sessionId = sessionId
+        )
+
+        val rejectedResponse = ProximityHandshakeResponse(
+            sessionId = sessionId,
+            receiverDeviceName = "Galaxy S24",
+            receiverDeviceId = "s24_device",
+            receiverPublicKeyBase64 = "invalid_key",
+            accepted = false,
+            rejectionReason = "User rejected"
+        )
+
+        val state = aliceHandshake.processReceiverResponse(offer, rejectedResponse)
+        assertTrue("State must be Rejected", state is HandshakeState.Rejected)
+        assertEquals("User rejected", (state as HandshakeState.Rejected).reason)
+    }
+
+    @Test
+    fun testStreamingSha256ChecksumIntegrity() {
+        val payload = "Streaming large file payload integrity verification bytes test 1234567890".toByteArray(Charsets.UTF_8)
+        val hash = TransferSecurityManager.calculateStreamHash(ByteArrayInputStream(payload))
+
+        assertNotNull(hash)
+        assertEquals(64, hash.length)
+
+        val corruptPayload = "Streaming large file payload integrity verification bytes test 1234567891".toByteArray(Charsets.UTF_8)
+        val corruptHash = TransferSecurityManager.calculateStreamHash(ByteArrayInputStream(corruptPayload))
+
+        assertNotEquals("Corrupted bytes must yield different SHA-256 hash", hash, corruptHash)
+    }
+
+    @Test
+    fun testProximityProgressSpeedCalculation() {
         val progress = ProximityProgress(
-            currentFileName = "presentation.pdf",
+            currentFileName = "document.pdf",
             currentFileIndex = 1,
-            totalFiles = 2,
-            bytesTransferred = 50 * 1024 * 1024,
-            totalBytes = 100 * 1024 * 1024,
-            speedBytesPerSec = 15 * 1024 * 1024
+            totalFiles = 1,
+            bytesTransferred = 25 * 1024 * 1024,
+            totalBytes = 50 * 1024 * 1024,
+            speedBytesPerSec = 12 * 1024 * 1024
         )
 
         assertEquals(0.5f, progress.percent, 0.001f)
-        assertEquals("15.00 MB/s", progress.formattedSpeed)
+        assertEquals("12.00 MB/s", progress.formattedSpeed)
     }
 }

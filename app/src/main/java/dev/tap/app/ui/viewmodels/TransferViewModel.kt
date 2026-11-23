@@ -59,6 +59,9 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     val stagedProximityFiles = proximityEngine.stagedFiles
     val proximityEngineState = proximityEngine.engineState
     val proximityProgress = proximityEngine.progress
+    val isProximityReceiverRunning = proximityEngine.isReceiverRunning
+    val pendingProximityApproval = proximityEngine.pendingApproval
+    val discoveredP2pPeers = proximityEngine.discoveredPeers
 
     fun stageProximityUris(uris: List<Uri>) {
         proximityEngine.stageUris(uris)
@@ -78,6 +81,30 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
 
     fun cancelProximityTransfer() {
         proximityEngine.cancelActiveTransfer()
+    }
+
+    fun startProximityReceiver() {
+        proximityEngine.startReceiverMode(viewModelScope)
+    }
+
+    fun stopProximityReceiver() {
+        proximityEngine.stopReceiverMode()
+    }
+
+    fun respondToProximityApproval(accepted: Boolean) {
+        proximityEngine.respondToApproval(accepted)
+    }
+
+    fun startProximityDiscovery() {
+        proximityEngine.startProximityDiscovery(viewModelScope)
+    }
+
+    fun stopProximityDiscovery() {
+        proximityEngine.stopProximityDiscovery()
+    }
+
+    fun sendProximityToHost(host: String) {
+        proximityEngine.sendToHost(host, scope = viewModelScope)
     }
 
     // Navigation state
@@ -429,5 +456,6 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         transferServer.stop()
         transferClient.cancel()
         localHttpServer.stop()
+        proximityEngine.stopReceiverMode()
     }
 }

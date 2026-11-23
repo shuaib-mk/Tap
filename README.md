@@ -1,4 +1,4 @@
-# TAP UNIVERSAL (v1.2.0) — Cross-Device Proximity-Sharing & Samsung Quick Share
+# TAP UNIVERSAL (v1.2.1) — Cross-Device Proximity-Sharing & Samsung Quick Share
 
 TAP is a minimal, fast, privacy-focused proximity-sharing platform built for Android (specifically optimized and tested for the **Samsung Galaxy A54 5G** running One UI 6 / 7, Android 14/15, and backward-compatible down to Android 8.0 / API 26).
 
@@ -12,7 +12,7 @@ The receiver does **not** need TAP installed to receive contacts, photos, or fil
 
 - **Application Name**: TAP
 - **Application ID**: `dev.tap.app`
-- **Version**: `1.2.0` (VersionCode: `3`)
+- **Version**: `1.2.1` (VersionCode: `4`)
 - **Min SDK**: API 26 (Android 8.0 Oreo)
 - **Compile SDK**: API 36 (Android 15+)
 - **Target SDK**: API 36
@@ -22,22 +22,26 @@ The receiver does **not** need TAP installed to receive contacts, photos, or fil
 
 ---
 
-## 2. NEW in v1.2.0: Proximity File Sharing & Samsung Quick Share Tap to Share
+## 2. NEW in v1.2.1: Complete Proximity Engine & Security Hardening
 
-TAP v1.2.0 introduces **Proximity File Sharing** with dedicated interoperability for Samsung Galaxy devices (One UI 6.x, 7.x, 8.x, 9.5) and Galaxy A54 5G:
+TAP v1.2.1 completes the independent Proximity Engine and resolves all cryptographic and architectural gaps:
 
-1. **Samsung Quick Share Tap to Share Integration**:
-   - Detects `com.samsung.android.app.sharelive` (Samsung Quick Share) and One UI version at runtime.
-   - Stages multi-category files (Photos, Videos, Audio, PDFs, Documents, Archives) with auto-resolved content URIs.
-   - Hands off directly to `com.samsung.android.app.sharelive/.ShareActivity` with `FLAG_GRANT_READ_URI_PERMISSION`.
-   - On compatible Galaxy devices (e.g. Galaxy A54 brought close to another Galaxy running One UI), this triggers Samsung's native proximity radar and Tap to Share prompt without friction.
-2. **TAP Native High-Speed Proximity Engine**:
-   - For non-Samsung devices or independent transfers, TAP runs its own zero-cloud proximity engine.
-   - **Ephemeral Security**: ECDH (`secp256r1`) key agreement + HKDF-SHA256 key derivation + AES-256-GCM chunk encryption.
-   - **Streaming Transport**: High-speed TCP socket streaming 256 KB encrypted chunks with real-time throughput (MB/s) and streaming SHA-256 checksums.
-3. **Dedicated Screen & Home Screen Entry**:
-   - Access via the **"Proximity File Sharing"** hero card on the Home Screen.
-   - Categorized picker for Media & Documents, staged file preview with category badges, and dual transfer modes ("Share via Samsung Quick Share" & "TAP Proximity Transfer").
+1. **Full Bidirectional Proximity Transport**:
+   - **Sender & Receiver**: Operates both as a high-speed sender and an autonomous receiver listening on TCP port `8990`.
+   - **Wi-Fi Direct (`WifiP2pManager`)**: Supports autonomous P2P group creation (`ProximityP2pManager`) for router-less direct device-to-device transfers, with seamless fallback to local Wi-Fi / Hotspot networks.
+   - **Atomic File Saving**: Incoming chunks are decrypted on-the-fly and written to app-isolated cache storage, verified against the sender's SHA-256 digest, and atomically committed to MediaStore / Downloads directory via `FileManager.saveVerifiedFile`. Corrupted chunks or hash mismatches trigger immediate file deletion and transfer abort.
+
+2. **Cryptographic Hardening & MITM Protection**:
+   - **Short Authentication String (SAS)**: Derives a deterministic 6-digit verification code (`calculateSasCode`) displayed on both sender and receiver screens (e.g. `482 913`). Out-of-band comparison guarantees mathematical protection against Man-in-the-Middle (MITM) attacks.
+   - **Session-Bound Key Derivation**: HKDF-SHA256 binds the master AES-256 session key to `sessionId`, `senderDeviceId`, `receiverDeviceId`, and lexicographically ordered public keys, preventing cross-session replay and session-confusion attacks.
+   - **Monotonic Nonce Management**: Each 256 KB chunk uses a 12-byte IV consisting of an 8-byte monotonic `chunkIndex` (big-endian), a 1-byte direction indicator, and a 3-byte session entropy prefix.
+   - **Streaming SHA-256 Digest**: Pre-computed manifest hashes are verified end-to-end against the receiver's decrypted stream before persistent storage.
+
+3. **Samsung Quick Share Integration (Preserved)**:
+   - Preserves direct handoff to `com.samsung.android.app.sharelive/.ShareActivity` with `FLAG_GRANT_READ_URI_PERMISSION`. Users on Samsung Galaxy devices can launch native One UI Quick Share with one tap.
+
+4. **100% Feature Preservation**:
+   - Digital Contact Card, Always-Ready Background NFC HCE, Physical Tag Writer, QR Scanner, 15 Screens, and payment coexistence remain fully functional.
 
 ---
 
@@ -150,3 +154,43 @@ See the comprehensive [COMPATIBILITY.md](file:///c:/Users/q04ti/Downloads/TAP-An
 ```powershell
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
+
+---
+
+## 8. Physical Device Verification Instructions
+
+### Test 1: TAP Proximity File Sharing (Two Android Devices)
+1. Install TAP v1.2.1 on Device A (Sender) and Device B (Receiver).
+2. Connect both devices to the same local Wi-Fi or turn on Portable Hotspot on Device A and connect Device B.
+3. **On Device B (Receiver)**:
+   - Open TAP → Tap **Proximity File Sharing** card on HomeScreen.
+   - Switch to **"Receive Mode"** tab.
+   - Tap **"Start Proximity Receiver"** (status changes to *"Proximity Receiver Active - Listening on port 8990"*).
+4. **On Device A (Sender)**:
+   - Open TAP → Tap **Proximity File Sharing** card.
+   - Tap **"Media"** or **"Files"** and select 1 photo and 1 PDF.
+   - Tap **"TAP Proximity Direct Transfer"**.
+   - In the IP dialog, enter Device B's local IP (e.g. `192.168.1.15`).
+   - Tap **"Connect & Send"**.
+5. **Approval & Short Authentication String (SAS) Verification**:
+   - Device B immediately rings with the **Incoming Proximity Transfer** card showing Device A's name, file count, and a prominent 6-digit verification code (e.g. `482 913`).
+   - Confirm the exact same 6-digit code appears on Device A.
+   - Tap **"Accept"** on Device B.
+6. **Integrity & Progress Verification**:
+   - Both devices display the real-time progress bar and transfer speed (MB/s).
+   - Once all chunks are received, Device B verifies the streaming SHA-256 hash.
+   - Green badge **"SHA-256 Verified ✓"** appears and the files are saved directly to `Download/TAP`.
+
+### Test 2: Samsung Quick Share Tap to Share Handoff
+1. On Galaxy A54: Open TAP → **Proximity File Sharing**.
+2. Pick files → Tap **"Share via Samsung Quick Share"**.
+3. Verify Samsung's native Quick Share activity launches immediately with staged files.
+4. Unlock the nearby Samsung Galaxy phone (One UI 6.x, 7.x, 9.5) and tap the receiver avatar to execute the native transfer.
+
+### Test 3: Background NFC Tap Sharing While TAP is Closed
+1. On Galaxy A54: Open TAP → **Contact Card** → Fill in Name and Phone → Tap Save.
+2. Enable **"Background Tap Sharing"**.
+3. Return to Android Home screen or lock screen (screen ON).
+4. Tap another NFC-enabled Android phone to the back of the A54.
+5. The receiving phone immediately reads the Type 4 NDEF vCard and opens the native "Add to Contacts" prompt.
+
