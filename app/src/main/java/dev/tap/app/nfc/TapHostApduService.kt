@@ -158,12 +158,15 @@ class TapHostApduService : HostApduService() {
 
         try {
             val ctx = try { applicationContext } catch (_: Exception) { null }
+            val repo = if (ctx != null) NfcSettingsRepository.getInstance(ctx) else null
+            val beamId = if (repo != null && repo.isBackgroundSharingEnabled()) repo.currentBeamRendezvousId else ""
+
             val card = if (ctx != null) {
                 ContactCardRepository.getInstance(ctx).getContactCard()
             } else {
                 ContactCard.createDefault()
             }
-            val ndefMsg = card.toNdefMessage(fallbackUri = null, filterSelected = true)
+            val ndefMsg = card.toNdefMessage(fallbackUri = null, filterSelected = true, beamId = beamId)
             val msgBytes = ndefMsg.toByteArray()
             if (msgBytes != null && msgBytes.isNotEmpty()) {
                 val nlen = msgBytes.size

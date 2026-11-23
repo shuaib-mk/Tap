@@ -46,6 +46,25 @@ fun TransferProgressScreen(viewModel: TransferViewModel) {
     val progress by viewModel.anywhereProgress.collectAsState()
     val isPaused = viewModel.anywhereEngine.chunkTransport.isPaused
 
+    // Sleek continuous interpolated progress animation
+    val animatedPercent by animateFloatAsState(
+        targetValue = if (progress.isComplete) 1f else progress.percent,
+        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+        label = "transferAnimatedPercent"
+    )
+
+    // Minimal subtle pulse dot for active transfer
+    val infiniteTransition = rememberInfiniteTransition(label = "transferPulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(700, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "transferPulseAlpha"
+    )
+
     Surface(modifier = Modifier.fillMaxSize(), color = TapInk) {
         Column(
             modifier = Modifier
@@ -392,27 +411,43 @@ fun TransferProgressScreen(viewModel: TransferViewModel) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    if (progress.isComplete) "Completed" else progress.currentFileName.ifBlank { "Preparing files..." },
-                                    color = Color.White,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1,
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.weight(1f, fill = false)
-                                )
+                                ) {
+                                    if (!progress.isComplete && progress.bytesTransferred > 0) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(7.dp)
+                                                .clip(CircleShape)
+                                                .background(TapAccent.copy(alpha = pulseAlpha))
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                    }
+                                    Text(
+                                        if (progress.isComplete) "Completed" else progress.currentFileName.ifBlank { "Preparing files..." },
+                                        color = Color.White,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        fontFamily = AnthropicSerifText,
+                                        maxLines = 1
+                                    )
+                                }
                                 Spacer(Modifier.width(8.dp))
                                 Text(
                                     if (progress.isComplete) "100%" else progress.formattedSpeed,
                                     color = TapAccent,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = AnthropicSerifDisplay,
+                                    letterSpacing = 0.5.sp
                                 )
                             }
 
                             Spacer(Modifier.height(10.dp))
 
                             LinearProgressIndicator(
-                                progress = { if (progress.isComplete) 1f else progress.percent },
+                                progress = { animatedPercent },
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(6.dp)

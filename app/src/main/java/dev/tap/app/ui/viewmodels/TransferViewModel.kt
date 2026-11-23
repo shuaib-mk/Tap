@@ -200,6 +200,14 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
         nfcSettingsRepo.setBackgroundSharingEnabled(enabled)
     }
 
+    fun activateBeam(durationMinutes: Int = 5) {
+        nfcSettingsRepo.activateBeam(durationMinutes)
+    }
+
+    fun deactivateBeam() {
+        nfcSettingsRepo.deactivateBeam()
+    }
+
     private val _nfcMode = MutableStateFlow(NfcMode.MODE_B_CONTACT_CARD)
     val nfcMode: StateFlow<NfcMode> = _nfcMode.asStateFlow()
 

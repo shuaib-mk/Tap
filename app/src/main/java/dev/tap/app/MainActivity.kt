@@ -16,14 +16,22 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
 import dev.tap.app.contacts.ContactCard
+import dev.tap.app.contacts.ContactCardRepository
 import dev.tap.app.discovery.nfc.NfcSessionExchange
 import dev.tap.app.navigation.TapScreen
+import dev.tap.app.nfc.NfcSettingsRepository
 import dev.tap.app.nfc.TapHostApduService
 import dev.tap.app.permissions.PermissionHelper
 import dev.tap.app.ui.TapApp
 import dev.tap.app.ui.theme.TapTheme
 import dev.tap.app.ui.viewmodels.TransferViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 
 class MainActivity : ComponentActivity() {
 
@@ -44,6 +52,8 @@ class MainActivity : ComponentActivity() {
         // Handle intent (Sharesheet, deep link, or NFC)
         handleIntent(intent)
 
+        val nfcRepo = NfcSettingsRepository.getInstance(this)
+
         // Dynamically manage Reader Mode vs HCE Card Emulation based on active screen and receive state
         lifecycleScope.launch {
             viewModel.currentScreen.collect { screen ->
@@ -54,6 +64,14 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             viewModel.isReceiveModeActive.collect { isReceiveActive ->
                 updateNfcOperatingMode(viewModel.currentScreen.value, isReceiveActive)
+            }
+        }
+
+        // Dynamically respond to Control Center / In-App TAP Beam toggles
+        lifecycleScope.launch {
+            nfcRepo.isBackgroundSharingEnabled.collect { isBeamActive ->
+                updateNfcOperatingMode(viewModel.currentScreen.value, viewModel.isReceiveModeActive.value)
+                manageBeamSignalingChannel(isBeamActive, nfcRepo.currentBeamRendezvousId)
             }
         }
 
@@ -80,9 +98,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var beamWebSocket: okhttp3.WebSocket? = null
+    private val httpClient = okhttp3.OkHttpClient()
+
     private fun updateNfcOperatingMode(screen: TapScreen, isReceiveActive: Boolean) {
         val nfcAdapter = NfcAdapter.getDefaultAdapter(this) ?: return
         if (!nfcAdapter.isEnabled) return
+
+        val nfcRepo = NfcSettingsRepository.getInstance(this)
+        val isBeamActive = nfcRepo.isBackgroundSharingEnabled()
+        val isProximity = screen is TapScreen.ProximityShare
+        val cardEmulation = CardEmulation.getInstance(nfcAdapter)
 
         val shouldEnableReaderMode = screen is TapScreen.NfcCardWriter ||
                 screen is TapScreen.QrScanner ||
@@ -113,20 +139,43 @@ class MainActivity : ComponentActivity() {
                 }
             )
             try {
-                CardEmulation.getInstance(nfcAdapter).unsetPreferredService(this)
+                cardEmulation.unsetPreferredService(this)
             } catch (_: Exception) {}
-        } else {
-            // General operation: Emulate Type 4 Tag HCE so other phones can tap this device
+        } else if (isBeamActive || isProximity) {
+            // Emulate Type 4 Tag HCE ONLY when user turns on TAP Beam or enters Proximity Sharing
             NfcSessionExchange.disableReaderMode(this)
             try {
-                val cardEmulation = CardEmulation.getInstance(nfcAdapter)
                 cardEmulation.setPreferredService(this, ComponentName(this, TapHostApduService::class.java))
+            } catch (_: Exception) {}
+        } else {
+            // Dormant state: unclaim preferred service so OS never shows contactless payment prompts
+            NfcSessionExchange.disableReaderMode(this)
+            try {
+                cardEmulation.unsetPreferredService(this)
             } catch (_: Exception) {}
         }
     }
 
     private fun showContactCardImportPrompt(card: ContactCard) {
         Toast.makeText(this, "Received contact for ${card.displayName}", Toast.LENGTH_SHORT).show()
+
+        // Bidirectional Contact Exchange: If peer's card includes a beam rendezvous ID,
+        // instantly post our own contact card so both devices exchange simultaneously in one physical tap!
+        if (card.beamRendezvousId.isNotBlank()) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val myCard = ContactCardRepository.getInstance(this@MainActivity).getContactCard()
+                    val myVcard = myCard.toVCard3(filterSelected = true)
+                    val url = "https://ntfy.sh/tap_${card.beamRendezvousId}"
+                    val req = okhttp3.Request.Builder()
+                        .url(url)
+                        .post(myVcard.toRequestBody("text/plain".toMediaType()))
+                        .build()
+                    httpClient.newCall(req).execute().close()
+                } catch (_: Exception) {}
+            }
+        }
+
         val insertIntent = Intent(Intent.ACTION_INSERT, ContactsContract.Contacts.CONTENT_URI).apply {
             putExtra(ContactsContract.Intents.Insert.NAME, card.displayName)
             putExtra(ContactsContract.Intents.Insert.COMPANY, card.company)
@@ -138,6 +187,49 @@ class MainActivity : ComponentActivity() {
         try {
             startActivity(insertIntent)
         } catch (_: Exception) {}
+    }
+
+    private fun manageBeamSignalingChannel(isBeamActive: Boolean, beamId: String) {
+        try {
+            beamWebSocket?.close(1000, "Beam deactivated")
+        } catch (_: Exception) {}
+        beamWebSocket = null
+
+        if (!isBeamActive || beamId.isBlank()) return
+
+        val wssUrl = "wss://ntfy.sh/tap_${beamId}/ws?since=10m"
+        val request = okhttp3.Request.Builder().url(wssUrl).build()
+
+        beamWebSocket = httpClient.newWebSocket(request, object : okhttp3.WebSocketListener() {
+            override fun onMessage(webSocket: okhttp3.WebSocket, text: String) {
+                try {
+                    val body = if (text.contains("\"message\":")) {
+                        val json = Json { ignoreUnknownKeys = true }
+                        val el = json.parseToJsonElement(text)
+                        el.jsonObject["message"]?.jsonPrimitive?.content ?: text
+                    } else {
+                        text
+                    }
+
+                    if (body.contains("BEGIN:VCARD")) {
+                        val incomingCard = ContactCard.parseVCard(body)
+                        if (incomingCard.displayName.isNotBlank()) {
+                            runOnUiThread {
+                                showContactCardImportPrompt(incomingCard)
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        })
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            beamWebSocket?.close(1000, "Activity destroyed")
+        } catch (_: Exception) {}
+        beamWebSocket = null
     }
 
     override fun onNewIntent(intent: Intent) {

@@ -22,6 +22,7 @@ data class ContactCard(
     val website: String = "",
     val notes: String = "",
     val socialLinks: Map<String, String> = emptyMap(),
+    val beamRendezvousId: String = "",
     val selectedFields: Set<String> = setOf(
         FIELD_DISPLAY_NAME,
         FIELD_JOB_TITLE,
@@ -73,6 +74,7 @@ data class ContactCard(
             var email = ""
             var web = ""
             var note = ""
+            var beamId = ""
             val social = mutableMapOf<String, String>()
 
             vcardString.lines().forEach { rawLine ->
@@ -102,6 +104,7 @@ data class ContactCard(
                             if (web.isBlank()) web = value
                         }
                         keyPart == "NOTE" || keyPart.startsWith("NOTE;") -> note = value
+                        keyPart == "X-TAP-BEAM" || keyPart.startsWith("X-TAP-BEAM;") -> beamId = value
                         keyPart.startsWith("X-SOCIALPROFILE") || keyPart.startsWith("X-SERVICE-") -> {
                             val svc = if (keyPart.contains("linkedin", ignoreCase = true)) "LinkedIn"
                             else if (keyPart.contains("github", ignoreCase = true)) "GitHub"
@@ -121,7 +124,8 @@ data class ContactCard(
                 email = email,
                 website = web,
                 notes = note,
-                socialLinks = social
+                socialLinks = social,
+                beamRendezvousId = beamId
             )
         }
     }
@@ -191,6 +195,10 @@ data class ContactCard(
             }
         }
 
+        if (beamRendezvousId.isNotBlank()) {
+            sb.append("X-TAP-BEAM:$beamRendezvousId\r\n")
+        }
+
         sb.append("END:VCARD\r\n")
         return sb.toString()
     }
@@ -234,6 +242,10 @@ data class ContactCard(
             if (notes.isNotBlank()) sb.append("NOTE:$notes\r\n")
         }
 
+        if (beamRendezvousId.isNotBlank()) {
+            sb.append("X-TAP-BEAM:$beamRendezvousId\r\n")
+        }
+
         sb.append("END:VCARD\r\n")
         return sb.toString()
     }
@@ -242,8 +254,9 @@ data class ContactCard(
      * Builds an NDEF MIME record with MIME type "text/vcard".
      * Standardized NDEF record compatible with NFC Forum specifications.
      */
-    fun toNdefMimeRecord(filterSelected: Boolean = true): NdefRecord {
-        val vcardBytes = toVCard3(filterSelected).toByteArray(StandardCharsets.UTF_8)
+    fun toNdefMimeRecord(filterSelected: Boolean = true, beamId: String = ""): NdefRecord {
+        val cardToExport = if (beamId.isNotBlank()) copy(beamRendezvousId = beamId) else this
+        val vcardBytes = cardToExport.toVCard3(filterSelected).toByteArray(StandardCharsets.UTF_8)
         return NdefRecord.createMime(MIME_TYPE_VCARD, vcardBytes)
     }
 
@@ -259,7 +272,7 @@ data class ContactCard(
      * Builds an NdefMessage.
      * If [includeFallbackUri] is provided, includes both the URI record and MIME record.
      */
-    fun toNdefMessage(fallbackUri: String? = null, filterSelected: Boolean = true): NdefMessage {
+    fun toNdefMessage(fallbackUri: String? = null, filterSelected: Boolean = true, beamId: String = ""): NdefMessage {
         val records = mutableListOf<NdefRecord>()
         
         // Priority 1: If fallbackUri provided, place URI record first so generic NFC phones / iOS open the web card directly
@@ -268,7 +281,7 @@ data class ContactCard(
         }
         
         // Priority 2: Standard vCard MIME record
-        records.add(toNdefMimeRecord(filterSelected))
+        records.add(toNdefMimeRecord(filterSelected, beamId))
 
         return NdefMessage(records.toTypedArray())
     }

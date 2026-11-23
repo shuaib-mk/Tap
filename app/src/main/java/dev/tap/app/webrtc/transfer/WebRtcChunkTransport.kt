@@ -31,8 +31,8 @@ class WebRtcChunkTransport(
 
     companion object {
         const val CHUNK_SIZE = 64 * 1024 // 64 KB chunks
-        const val MAX_BUFFERED_AMOUNT = 1024 * 1024 // 1 MB backpressure limit
-        const val RESUME_BUFFERED_AMOUNT = 512 * 1024 // 512 KB drain threshold
+        const val MAX_BUFFERED_AMOUNT = 4 * 1024 * 1024 // 4 MB high-throughput backpressure limit
+        const val RESUME_BUFFERED_AMOUNT = 2 * 1024 * 1024 // 2 MB drain threshold
 
         const val FRAME_FILE_HEADER: Byte = 0x01
         const val FRAME_CHUNK: Byte = 0x02
@@ -113,10 +113,14 @@ class WebRtcChunkTransport(
     private var totalFilesToReceive: Int = 0
     private var totalBytesToReceive: Long = 0L
     private var overallBytesReceived: Long = 0L
+    private var receiverStartTime: Long = 0L
+    private var lastReceiverProgressTime: Long = 0L
 
     fun setSessionParameters(key: ByteArray, sessionId: String, sasCode: String) {
         sessionKey = key
         activeSessionId = sessionId
+        receiverStartTime = 0L
+        lastReceiverProgressTime = 0L
         _progress.value = _progress.value.copy(sasVerificationCode = sasCode)
     }
 
@@ -141,6 +145,7 @@ class WebRtcChunkTransport(
         val totalBytes = files.sumOf { it.sizeBytes }
         var overallBytesSent: Long = 0
         val startTime = System.currentTimeMillis()
+        var lastProgressTime = 0L
 
         activeJob = scope.launch(Dispatchers.IO) {
             try {
@@ -152,8 +157,9 @@ class WebRtcChunkTransport(
                     // 1. Send File Header Frame
                     sendFileHeader(fileIndex, manifest)
 
-                    val fileStream: InputStream = context.contentResolver.openInputStream(file.uri)
+                    val rawStream: InputStream = context.contentResolver.openInputStream(file.uri)
                         ?: throw IOException("Cannot read file ${file.name}")
+                    val fileStream = BufferedInputStream(rawStream, 256 * 1024)
 
                     val buffer = ByteArray(CHUNK_SIZE)
                     var chunkIndex: Long = 0
@@ -169,9 +175,9 @@ class WebRtcChunkTransport(
                                 delay(200)
                             }
 
-                            // Flow control backpressure
+                            // Flow control backpressure with responsive 2ms polling
                             while (peerConnectionManager.getBufferedAmount() > MAX_BUFFERED_AMOUNT && !isCancelled) {
-                                delay(15)
+                                delay(2)
                             }
 
                             val plaintext = buffer.copyOf(readBytes)
@@ -188,19 +194,25 @@ class WebRtcChunkTransport(
                             chunkIndex++
 
                             overallBytesSent += readBytes
-                            val elapsedSec = (System.currentTimeMillis() - startTime) / 1000.0
-                            val speed = if (elapsedSec > 0) (overallBytesSent / elapsedSec).toLong() else 0L
 
-                            _progress.value = ProximityProgress(
-                                currentFileName = file.name,
-                                currentFileIndex = fileIndex + 1,
-                                totalFiles = files.size,
-                                bytesTransferred = overallBytesSent,
-                                totalBytes = totalBytes,
-                                speedBytesPerSec = speed,
-                                sasVerificationCode = _progress.value.sasVerificationCode,
-                                verifiedFilesCount = fileIndex
-                            )
+                            // Throttle progress emissions to 60ms to prevent main thread recomposition lag
+                            val now = System.currentTimeMillis()
+                            if (now - lastProgressTime >= 60L || chunkIndex == totalChunks) {
+                                lastProgressTime = now
+                                val elapsedSec = (now - startTime) / 1000.0
+                                val speed = if (elapsedSec > 0) (overallBytesSent / elapsedSec).toLong() else 0L
+
+                                _progress.value = ProximityProgress(
+                                    currentFileName = file.name,
+                                    currentFileIndex = fileIndex + 1,
+                                    totalFiles = files.size,
+                                    bytesTransferred = overallBytesSent,
+                                    totalBytes = totalBytes,
+                                    speedBytesPerSec = speed,
+                                    sasVerificationCode = _progress.value.sasVerificationCode,
+                                    verifiedFilesCount = fileIndex
+                                )
+                            }
                         }
                     }
 
@@ -295,6 +307,9 @@ class WebRtcChunkTransport(
                 currentReceivingFileManifest = FileManifestDto(fileName, sizeBytes, mimeType, sha256)
                 currentFileIndex = fileIndex
                 currentLastAckedChunk = -1L
+                if (receiverStartTime == 0L) {
+                    receiverStartTime = System.currentTimeMillis()
+                }
 
                 val temp = FileManager.createTempFile(context, fileName)
                 currentTempFile = temp
@@ -324,16 +339,23 @@ class WebRtcChunkTransport(
                     overallBytesReceived += decrypted.size
                     val manifest = currentReceivingFileManifest
 
-                    _progress.value = ProximityProgress(
-                        currentFileName = manifest?.name ?: "Downloading...",
-                        currentFileIndex = fileIndex + 1,
-                        totalFiles = totalFilesToReceive,
-                        bytesTransferred = overallBytesReceived,
-                        totalBytes = totalBytesToReceive,
-                        speedBytesPerSec = 0L,
-                        sasVerificationCode = _progress.value.sasVerificationCode,
-                        verifiedFilesCount = fileIndex
-                    )
+                    val now = System.currentTimeMillis()
+                    if (now - lastReceiverProgressTime >= 60L || chunkIndex == totalChunks - 1) {
+                        lastReceiverProgressTime = now
+                        val elapsedSec = (now - receiverStartTime) / 1000.0
+                        val speed = if (elapsedSec > 0) (overallBytesReceived / elapsedSec).toLong() else 0L
+
+                        _progress.value = ProximityProgress(
+                            currentFileName = manifest?.name ?: "Downloading...",
+                            currentFileIndex = fileIndex + 1,
+                            totalFiles = totalFilesToReceive,
+                            bytesTransferred = overallBytesReceived,
+                            totalBytes = totalBytesToReceive,
+                            speedBytesPerSec = speed,
+                            sasVerificationCode = _progress.value.sasVerificationCode,
+                            verifiedFilesCount = fileIndex
+                        )
+                    }
                 } catch (e: Exception) {
                     onError("Failed to decrypt chunk $chunkIndex: ${e.message}")
                 }

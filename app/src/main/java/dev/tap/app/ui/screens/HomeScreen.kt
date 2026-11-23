@@ -45,6 +45,7 @@ fun HomeScreen(viewModel: TransferViewModel) {
     val anywhereState by viewModel.anywhereState.collectAsState()
     val progress by viewModel.anywhereProgress.collectAsState()
     val historyRecords by viewModel.historyRepo.records.collectAsState()
+    val isBeamActive by viewModel.isBackgroundTapSharing.collectAsState()
 
     var showReceiveDialog by remember { mutableStateOf(false) }
     var receiveCodeInput by remember { mutableStateOf("") }
@@ -171,6 +172,43 @@ fun HomeScreen(viewModel: TransferViewModel) {
                     )
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Minimalist TAP Beam Toggle Pill
+                        Surface(
+                            onClick = {
+                                if (isBeamActive) {
+                                    viewModel.deactivateBeam()
+                                } else {
+                                    viewModel.activateBeam(5)
+                                }
+                            },
+                            shape = RoundedCornerShape(20.dp),
+                            color = if (isBeamActive) TapAccent.copy(alpha = 0.15f) else TapPanel,
+                            border = BorderStroke(1.dp, if (isBeamActive) TapAccent else TapBorder),
+                            modifier = Modifier.height(34.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isBeamActive) TapAccent else TapMuted)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    if (isBeamActive) "Beam Active" else "Beam Off",
+                                    fontFamily = AnthropicSerifText,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (isBeamActive) TapAccent else TapMuted
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.width(10.dp))
+
                         IconButton(
                             onClick = { viewModel.navigateTo(TapScreen.QrScanner) },
                             modifier = Modifier
