@@ -144,6 +144,18 @@ class TapHostApduService : HostApduService() {
             return
         }
 
+        // 1. Check if an active Proximity File Sharing session is staged
+        val proximityPayload = dev.tap.app.proximity.ProximityNdefRepository.activeSessionNdef
+        if (proximityPayload != null && proximityPayload.isNotEmpty()) {
+            val nlen = proximityPayload.size
+            ndefFilePayload = ByteArray(2 + nlen)
+            ndefFilePayload[0] = ((nlen shr 8) and 0xFF).toByte()
+            ndefFilePayload[1] = (nlen and 0xFF).toByte()
+            System.arraycopy(proximityPayload, 0, ndefFilePayload, 2, nlen)
+            safeLog("Prepared Physical Tap to Share Proximity NDEF payload: NLEN=$nlen")
+            return
+        }
+
         try {
             val ctx = try { applicationContext } catch (_: Exception) { null }
             val card = if (ctx != null) {

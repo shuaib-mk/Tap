@@ -143,3 +143,48 @@ In previous iterations, tapping two phones together while TAP was open failed be
      - AES-256-GCM chunk encryption (256 KB frames with 96-bit unique IVs).
      - High-speed direct Wi-Fi TCP streaming with streaming SHA-256 integrity verification.
 
+---
+
+## 7. TAP v1.3.0 Physical Tap to Share & Multi-Record NDEF Zero-Install Fallback
+
+### 1. Multi-Record NDEF Dispatch Architecture
+
+When the sender activates Physical Tap to Share with staged files, TAP's `TapHostApduService` emulates an NFC Forum Type 4 Tag containing a carefully sequenced 3-record NDEF payload:
+
+```
++-----------------------------------------------------------------------------------------+
+| NFC Forum Type 4 Tag NDEF Structure (Emulated by TAP HCE)                              |
++-----------------------------------------------------------------------------------------+
+| [NLEN: 2 Bytes (Big-Endian)]                                                            |
+|                                                                                         |
+| Record 1 (MB=1, ME=0): Custom MIME Record                                               |
+|   Type: application/vnd.dev.tap.proximity                                               |
+|   Payload: JSON Session Bootstrap Offer (Offer, Public Key, IP, Port, File Manifests)  |
+|                                                                                         |
+| Record 2 (MB=0, ME=0): NFC Forum URI Record                                            |
+|   Type: URI (0x55)                                                                      |
+|   URI: http://<Sender-IP>:8989/?token=<SessionToken>                                    |
+|                                                                                         |
+| Record 3 (MB=0, ME=1): Android Application Record (AAR)                                 |
+|   Type: android.com:pkg                                                                 |
+|   Package: dev.tap.app                                                                  |
++-----------------------------------------------------------------------------------------+
+```
+
+### 2. Operating System Dispatch Matrix
+
+| Receiver Operating Environment | Active Dispatch Rule | Resulting Experience |
+| :--- | :--- | :--- |
+| **Android Phone with TAP installed** | Matches `application/vnd.dev.tap.proximity` intent filter in `AndroidManifest.xml` | Instantly wakes TAP, triggers `handleIncomingProximityOffer`, displays Incoming Transfer approval screen with matching 6-digit SAS code, and streams encrypted files over TCP port 8990. |
+| **Android Phone without TAP** | Ignores custom MIME; detects Record 2 URI | Prompts user with native notification: *"Open link in browser"*. Tapping opens Chrome to download files directly via `LocalHttpServer`. |
+| **Apple iPhone (XS - 16)** | iOS background daemon ignores MIME; detects Record 2 URI | Displays native iOS notification banner: *"Website NFC Tag"*. Tapping opens Safari to download files directly. |
+
+### 3. RF Contention Prevention Rule
+
+Two NFC phones cannot communicate if both are acting as Readers (active RF emitters) or both are acting as Cards (passive listeners):
+
+- **Sender Rule**: When Physical Tap to Share is active, Reader Mode is **DISABLED**. Phone operates strictly as an ISO 14443-4 Type 4 Card Emulation target.
+- **Receiver Rule**: When TAP is on the Receive tab, Reader Mode is **ENABLED**. Phone actively emits 13.56 MHz carrier and polls for HCE tags.
+- When Sender and Receiver touch back-to-back: Receiver powers the transaction, reads the multi-record NDEF in ~120 ms, and initiates high-speed TCP socket streaming. No RF collisions occur.
+
+

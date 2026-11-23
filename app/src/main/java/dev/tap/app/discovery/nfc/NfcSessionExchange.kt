@@ -18,12 +18,54 @@ import java.nio.charset.StandardCharsets
  * Uses Android Reader Mode for reliable device-to-device tap detection.
  */
 object NfcSessionExchange {
-    private const val TAP_MIME_TYPE = "application/vnd.dev.tap.session"
+    const val TAP_MIME_TYPE = "application/vnd.dev.tap.session"
+    const val PROXIMITY_MIME_TYPE = "application/vnd.dev.tap.proximity"
 
     fun createNdefMessage(offer: SessionOffer): NdefMessage {
         val payload = TapProtocol.json.encodeToString(offer).toByteArray(StandardCharsets.UTF_8)
         val record = NdefRecord.createMime(TAP_MIME_TYPE, payload)
         return NdefMessage(arrayOf(record))
+    }
+
+    /**
+     * Creates a multi-record NDEF message for Physical Tap to Share:
+     * Record 1: Custom MIME `application/vnd.dev.tap.proximity` (full session bootstrap)
+     * Record 2: (Optional) NFC Forum URI record for zero-install web browser download
+     * Record 3: Android Application Record (AAR) to prioritize TAP launch
+     */
+    fun createProximityNdefMessage(offerJson: String, webFallbackUrl: String? = null): NdefMessage {
+        val records = mutableListOf<NdefRecord>()
+
+        // Record 1: TAP Proximity MIME
+        val mimePayload = offerJson.toByteArray(StandardCharsets.UTF_8)
+        records.add(NdefRecord.createMime(PROXIMITY_MIME_TYPE, mimePayload))
+
+        // Record 2: Zero-install Web Fallback URI (for devices without TAP)
+        if (!webFallbackUrl.isNullOrBlank()) {
+            try {
+                records.add(NdefRecord.createUri(webFallbackUrl))
+            } catch (_: Exception) {}
+        }
+
+        // Record 3: Android Application Record
+        try {
+            records.add(NdefRecord.createApplicationRecord("dev.tap.app"))
+        } catch (_: Exception) {}
+
+        return NdefMessage(records.toTypedArray())
+    }
+
+    fun parseProximityNdefMessage(message: NdefMessage): String? {
+        return try {
+            val record = message.records.firstOrNull { r ->
+                val mime = String(r.type, StandardCharsets.US_ASCII)
+                mime == PROXIMITY_MIME_TYPE || (mime.contains("proximity") && mime.contains("tap"))
+            } ?: return null
+
+            String(record.payload, StandardCharsets.UTF_8)
+        } catch (_: Exception) {
+            null
+        }
     }
 
     fun parseNdefMessage(message: NdefMessage): SessionOffer? {
@@ -43,12 +85,13 @@ object NfcSessionExchange {
     fun enableReaderMode(
         activity: Activity,
         onSessionDiscovered: (SessionOffer) -> Unit
-    ): Boolean = enableReaderMode(activity, onSessionDiscovered, null)
+    ): Boolean = enableReaderMode(activity, onSessionDiscovered, null, null)
 
     fun enableReaderMode(
         activity: Activity,
         onSessionDiscovered: (SessionOffer) -> Unit,
-        onTagDiscovered: ((Tag) -> Unit)?
+        onTagDiscovered: ((Tag) -> Unit)? = null,
+        onProximityDiscovered: ((String) -> Unit)? = null
     ): Boolean {
         val adapter = NfcAdapter.getDefaultAdapter(activity) ?: return false
         if (!adapter.isEnabled) return false
@@ -72,9 +115,16 @@ object NfcSessionExchange {
                         ndef.connect()
                         val message = ndef.ndefMessage
                         if (message != null) {
-                            parseNdefMessage(message)?.let { offer ->
+                            val proximityJson = parseProximityNdefMessage(message)
+                            if (proximityJson != null && onProximityDiscovered != null) {
                                 activity.runOnUiThread {
-                                    onSessionDiscovered(offer.copy(connectionMethod = ConnectionMethod.NFC_HCE))
+                                    onProximityDiscovered(proximityJson)
+                                }
+                            } else {
+                                parseNdefMessage(message)?.let { offer ->
+                                    activity.runOnUiThread {
+                                        onSessionDiscovered(offer.copy(connectionMethod = ConnectionMethod.NFC_HCE))
+                                    }
                                 }
                             }
                         }

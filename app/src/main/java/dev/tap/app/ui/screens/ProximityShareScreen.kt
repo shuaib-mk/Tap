@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.tap.app.proximity.FileCategory
+import dev.tap.app.proximity.ProximityEngineState
 import dev.tap.app.proximity.ProximityFile
 import dev.tap.app.proximity.QuickShareCompatibilityAdapter
 import dev.tap.app.ui.components.*
@@ -39,6 +41,9 @@ fun ProximityShareScreen(viewModel: TransferViewModel) {
     val isReceiverRunning by viewModel.isProximityReceiverRunning.collectAsState()
     val pendingApproval by viewModel.pendingProximityApproval.collectAsState()
     val discoveredP2pPeers by viewModel.discoveredP2pPeers.collectAsState()
+    val isPhysicalTapToShareActive by viewModel.isPhysicalTapToShareActive.collectAsState()
+    val currentSasCode by viewModel.currentSasCode.collectAsState()
+    val webFallbackUrl by viewModel.proximityWebFallbackUrl.collectAsState()
 
     var activeTab by remember { mutableStateOf("Send") } // "Send" or "Receive"
     var showDirectIpDialog by remember { mutableStateOf(false) }
@@ -128,7 +133,7 @@ fun ProximityShareScreen(viewModel: TransferViewModel) {
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        "Samsung Quick Share & TAP Proximity",
+                        "Physical Tap to Share • Quick Share Handoff",
                         color = TapAccent,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium
@@ -174,6 +179,134 @@ fun ProximityShareScreen(viewModel: TransferViewModel) {
             Spacer(Modifier.height(14.dp))
 
             // =====================================================================================
+            // INCOMING APPROVAL PROMPT (FLOATING FOR BOTH TABS)
+            // =====================================================================================
+            pendingApproval?.let { approval ->
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFF131924),
+                    border = androidx.compose.foundation.BorderStroke(1.5.dp, TapAccent),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.Security, contentDescription = null, tint = TapAccent)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Incoming Proximity Transfer", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text("From: ${approval.offer.senderDeviceName}", color = Color.White, fontSize = 14.sp)
+                        Text("Files: ${approval.offer.files.size} (${ProximityFile.formatBytes(approval.offer.files.sumOf { it.sizeBytes })})", color = TapMuted, fontSize = 13.sp)
+
+                        Spacer(Modifier.height(12.dp))
+
+                        // Prominent SAS Verification Box
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(TapAccent.copy(alpha = 0.15f))
+                                .border(1.dp, TapAccent.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                                .padding(12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("VERIFICATION CODE", color = TapAccent, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                                Spacer(Modifier.height(2.dp))
+                                Text(approval.sasCode, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black, letterSpacing = 3.sp)
+                                Spacer(Modifier.height(2.dp))
+                                Text("Confirm this identical code appears on sender device", color = TapMuted, fontSize = 10.sp)
+                            }
+                        }
+
+                        Spacer(Modifier.height(14.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { viewModel.respondToProximityApproval(false) },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF6B6B))
+                            ) { Text("Decline") }
+
+                            Button(
+                                onClick = { viewModel.respondToProximityApproval(true) },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = TapAccent, contentColor = TapInk)
+                            ) { Text("Accept", fontWeight = FontWeight.Bold) }
+                        }
+                    }
+                }
+            }
+
+            // =====================================================================================
+            // LIVE TRANSFER PROGRESS (VISIBLE FOR BOTH TABS)
+            // =====================================================================================
+            if (progress.totalBytes > 0L) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = TapPanel,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, TapBorder),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                if (progress.isComplete) "Transfer Complete" else "Transferring: ${progress.currentFileName}",
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(progress.formattedSpeed, color = TapAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = { progress.percent },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp)),
+                            color = TapAccent,
+                            trackColor = TapBorder
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "${ProximityFile.formatBytes(progress.bytesTransferred)} / ${ProximityFile.formatBytes(progress.totalBytes)}",
+                                color = TapMuted,
+                                fontSize = 11.sp
+                            )
+                            if (progress.sasVerificationCode.isNotBlank()) {
+                                Text(
+                                    "SAS: ${progress.sasVerificationCode}",
+                                    color = TapAccent,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            if (progress.isComplete) {
+                                Text("SHA-256 Verified ✓", color = TapAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // =====================================================================================
             // TAB 1: SEND FILES MODE
             // =====================================================================================
             if (activeTab == "Send") {
@@ -184,12 +317,12 @@ fun ProximityShareScreen(viewModel: TransferViewModel) {
                         .clip(RoundedCornerShape(16.dp))
                         .background(TapPanel)
                         .border(1.dp, if (quickShareReport.canDirectLaunch) TapAccent else TapBorder, RoundedCornerShape(16.dp))
-                        .padding(14.dp)
+                        .padding(12.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(34.dp)
                                 .clip(CircleShape)
                                 .background(if (quickShareReport.canDirectLaunch) TapAccent else TapBorder),
                             contentAlignment = Alignment.Center
@@ -198,10 +331,10 @@ fun ProximityShareScreen(viewModel: TransferViewModel) {
                                 Icons.Rounded.Share,
                                 contentDescription = null,
                                 tint = if (quickShareReport.canDirectLaunch) TapInk else Color.White,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
-                        Spacer(Modifier.width(12.dp))
+                        Spacer(Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
@@ -227,13 +360,13 @@ fun ProximityShareScreen(viewModel: TransferViewModel) {
                                 quickShareReport.description,
                                 color = TapMuted,
                                 fontSize = 11.sp,
-                                lineHeight = 15.sp
+                                lineHeight = 14.sp
                             )
                         }
                     }
                 }
 
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(10.dp))
 
                 // Selection Category Buttons
                 Row(
@@ -326,29 +459,163 @@ fun ProximityShareScreen(viewModel: TransferViewModel) {
 
                 Spacer(Modifier.height(10.dp))
 
-                // Action Buttons
+                // Action Buttons / Physical Tap to Share Section
                 if (stagedFiles.isNotEmpty()) {
-                    // Option 1: Samsung Quick Share Tap to Share Handoff
-                    Button(
+                    if (isPhysicalTapToShareActive) {
+                        // ACTIVE PULSING RADAR CARD
+                        val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+                        val pulseAlpha by infiniteTransition.animateFloat(
+                            initialValue = 0.4f,
+                            targetValue = 1f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(900, easing = LinearEasing),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "alpha"
+                        )
+
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFF0F1A28),
+                            border = androidx.compose.foundation.BorderStroke(1.5.dp, TapAccent),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .background(TapAccent.copy(alpha = pulseAlpha * 0.3f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.Sensors,
+                                            contentDescription = null,
+                                            tint = TapAccent,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            "Ready to Tap!",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp
+                                        )
+                                        Text(
+                                            "Hold backs of phones together to transfer",
+                                            color = TapAccent,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                }
+
+                                Spacer(Modifier.height(8.dp))
+
+                                // SAS Verification Display (if connection established)
+                                val sas = currentSasCode ?: progress.sasVerificationCode
+                                if (sas.isNotBlank()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(TapAccent.copy(alpha = 0.15f))
+                                            .border(1.dp, TapAccent.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                            .padding(8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("SAS VERIFICATION CODE", color = TapAccent, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                            Text(sas, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                                            Text("Confirm matching code on receiver screen", color = TapMuted, fontSize = 9.sp)
+                                        }
+                                    }
+                                    Spacer(Modifier.height(8.dp))
+                                }
+
+                                // Web Fallback indicator
+                                webFallbackUrl?.let {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(TapPanel)
+                                            .padding(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Rounded.Language, contentDescription = null, tint = TapMuted, modifier = Modifier.size(14.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(
+                                            "Zero-install web fallback active for non-TAP devices",
+                                            color = TapMuted,
+                                            fontSize = 10.sp,
+                                            maxLines = 1
+                                        )
+                                    }
+                                    Spacer(Modifier.height(8.dp))
+                                }
+
+                                Button(
+                                    onClick = { viewModel.deactivatePhysicalTapToShare() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A1C24), contentColor = Color(0xFFFF6B6B)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth().height(38.dp)
+                                ) {
+                                    Text("Cancel Tap to Share", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    } else {
+                        // PRIMARY FEATURE: ACTIVATE PHYSICAL TAP TO SHARE
+                        Button(
+                            onClick = { viewModel.activatePhysicalTapToShare() },
+                            colors = ButtonDefaults.buttonColors(containerColor = TapAccent, contentColor = TapInk),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                        ) {
+                            Icon(Icons.Rounded.TouchApp, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Column(horizontalAlignment = Alignment.Start) {
+                                Text("Physical Tap to Share", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text("Touch phones back-to-back to transfer", fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    // Secondary Option: Samsung Quick Share
+                    OutlinedButton(
                         onClick = { viewModel.launchQuickShareHandoff() },
-                        colors = ButtonDefaults.buttonColors(containerColor = TapAccent, contentColor = TapInk),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, TapBorder),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp)
+                            .height(44.dp)
                     ) {
-                        Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(16.dp), tint = TapAccent)
                         Spacer(Modifier.width(8.dp))
                         Text(
                             if (quickShareReport.canDirectLaunch) "Share via Samsung Quick Share" else "Share via System Sharesheet",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
                         )
                     }
 
                     Spacer(Modifier.height(8.dp))
 
-                    // Option 2: TAP Direct Proximity Transfer
+                    // Tertiary Option: TAP Direct IP Connect
                     OutlinedButton(
                         onClick = { showDirectIpDialog = true },
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
@@ -356,11 +623,11 @@ fun ProximityShareScreen(viewModel: TransferViewModel) {
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(46.dp)
+                            .height(44.dp)
                     ) {
-                        Icon(Icons.Rounded.Sensors, contentDescription = null, tint = TapAccent, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Rounded.Sensors, contentDescription = null, tint = TapMuted, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("TAP Proximity Direct Transfer", fontSize = 13.sp)
+                        Text("TAP Proximity Direct IP Connect", fontSize = 12.sp, color = TapMuted)
                     }
                 }
             }
@@ -411,7 +678,7 @@ fun ProximityShareScreen(viewModel: TransferViewModel) {
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                if (isReceiverRunning) "Awaiting connection on port 8990 (Wi-Fi Direct & LAN ready)" else "Tap below to start listening for incoming proximity transfers",
+                                if (isReceiverRunning) "Awaiting connection on port 8990 (NFC Reader & Wi-Fi Direct ready)" else "Tap below to start listening for incoming proximity transfers",
                                 color = TapMuted,
                                 fontSize = 12.sp,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -431,122 +698,6 @@ fun ProximityShareScreen(viewModel: TransferViewModel) {
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(if (isReceiverRunning) "Stop Receiver" else "Start Proximity Receiver", fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(16.dp))
-
-                    // INCOMING APPROVAL PROMPT (WITH 6-DIGIT SAS VERIFICATION CODE)
-                    pendingApproval?.let { approval ->
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color(0xFF131924),
-                            border = androidx.compose.foundation.BorderStroke(1.5.dp, TapAccent),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Rounded.Security, contentDescription = null, tint = TapAccent)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Incoming Proximity Transfer", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                }
-                                Spacer(Modifier.height(8.dp))
-                                Text("From: ${approval.offer.senderDeviceName}", color = Color.White, fontSize = 14.sp)
-                                Text("Files: ${approval.offer.files.size} (${ProximityFile.formatBytes(approval.offer.files.sumOf { it.sizeBytes })})", color = TapMuted, fontSize = 13.sp)
-
-                                Spacer(Modifier.height(12.dp))
-
-                                // Prominent SAS Verification Box
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(TapAccent.copy(alpha = 0.15f))
-                                        .border(1.dp, TapAccent.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
-                                        .padding(12.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("VERIFICATION CODE", color = TapAccent, fontSize = 10.sp, fontWeight = FontWeight.Black)
-                                        Spacer(Modifier.height(2.dp))
-                                        Text(approval.sasCode, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black, letterSpacing = 3.sp)
-                                        Spacer(Modifier.height(2.dp))
-                                        Text("Confirm this identical code appears on sender device", color = TapMuted, fontSize = 10.sp)
-                                    }
-                                }
-
-                                Spacer(Modifier.height(14.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    OutlinedButton(
-                                        onClick = { viewModel.respondToProximityApproval(false) },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF6B6B))
-                                    ) { Text("Decline") }
-
-                                    Button(
-                                        onClick = { viewModel.respondToProximityApproval(true) },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = TapAccent, contentColor = TapInk)
-                                    ) { Text("Accept", fontWeight = FontWeight.Bold) }
-                                }
-                            }
-                        }
-                    }
-
-                    // Live Transfer Progress
-                    if (progress.totalBytes > 0) {
-                        Spacer(Modifier.height(16.dp))
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = TapPanel,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, TapBorder),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        if (progress.isComplete) "Transfer Complete" else "Transferring: ${progress.currentFileName}",
-                                        color = Color.White,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 13.sp,
-                                        maxLines = 1
-                                    )
-                                    Text(progress.formattedSpeed, color = TapAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-                                Spacer(Modifier.height(8.dp))
-                                LinearProgressIndicator(
-                                    progress = { progress.percent },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(6.dp)
-                                        .clip(RoundedCornerShape(3.dp)),
-                                    color = TapAccent,
-                                    trackColor = TapBorder
-                                )
-                                Spacer(Modifier.height(6.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        "${ProximityFile.formatBytes(progress.bytesTransferred)} / ${ProximityFile.formatBytes(progress.totalBytes)}",
-                                        color = TapMuted,
-                                        fontSize = 11.sp
-                                    )
-                                    if (progress.isComplete) {
-                                        Text("SHA-256 Verified ✓", color = TapAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
                             }
                         }
                     }

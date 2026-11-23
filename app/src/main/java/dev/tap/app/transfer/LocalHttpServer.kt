@@ -31,18 +31,24 @@ class LocalHttpServer(private val context: Context) {
     var serverUrl: String = ""
         private set
 
+    @Volatile
+    var requiredSessionToken: String? = null
+        private set
+
     fun start(
         hostAddress: String,
         port: Int = DEFAULT_WEB_PORT,
         contactCard: ContactCard? = null,
-        files: List<SelectedFile> = emptyList()
+        files: List<SelectedFile> = emptyList(),
+        sessionToken: String? = null
     ): Result<String> {
         stop()
         return try {
             val ss = ServerSocket(port)
             serverSocket = ss
             isRunning = true
-            serverUrl = "http://$hostAddress:$port/"
+            requiredSessionToken = sessionToken
+            serverUrl = if (sessionToken != null) "http://$hostAddress:$port/?token=$sessionToken" else "http://$hostAddress:$port/"
 
             threadPool.execute {
                 while (isRunning && !ss.isClosed) {
@@ -66,6 +72,7 @@ class LocalHttpServer(private val context: Context) {
     fun stop() {
         try {
             isRunning = false
+            requiredSessionToken = null
             serverSocket?.close()
             serverSocket = null
             serverUrl = ""
@@ -83,14 +90,25 @@ class LocalHttpServer(private val context: Context) {
             val method = parts[0].uppercase()
             val path = parts[1]
 
+            val out = client.getOutputStream()
+
+            // Verify session token security if enabled
+            val token = requiredSessionToken
+            if (token != null) {
+                val hasValidToken = path.contains("token=$token")
+                if (!hasValidToken) {
+                    out.write("HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n403 Forbidden: Invalid or expired proximity session token.\r\n".toByteArray(Charsets.UTF_8))
+                    out.flush()
+                    return
+                }
+            }
+
             if (method != "GET") {
-                val out = client.getOutputStream()
                 out.write("HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n".toByteArray(Charsets.UTF_8))
                 out.flush()
                 return
             }
 
-            val out = client.getOutputStream()
             when {
                 path == "/" || path.startsWith("/?") -> {
                     val html = buildHtml(card, files)

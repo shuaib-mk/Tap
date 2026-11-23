@@ -62,6 +62,9 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     val isProximityReceiverRunning = proximityEngine.isReceiverRunning
     val pendingProximityApproval = proximityEngine.pendingApproval
     val discoveredP2pPeers = proximityEngine.discoveredPeers
+    val isPhysicalTapToShareActive = proximityEngine.isPhysicalTapToShareActive
+    val currentSasCode = proximityEngine.currentSasCode
+    val proximityWebFallbackUrl = proximityEngine.webFallbackUrl
 
     fun stageProximityUris(uris: List<Uri>) {
         proximityEngine.stageUris(uris)
@@ -73,6 +76,18 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
 
     fun clearProximityFiles() {
         proximityEngine.clearStagedFiles()
+    }
+
+    fun activatePhysicalTapToShare() {
+        proximityEngine.activatePhysicalTapToShare(viewModelScope)
+    }
+
+    fun deactivatePhysicalTapToShare() {
+        proximityEngine.deactivatePhysicalTapToShare()
+    }
+
+    fun handleIncomingProximityNdefJson(json: String) {
+        proximityEngine.handleIncomingProximityNdefJson(json, viewModelScope)
     }
 
     fun launchQuickShareHandoff() {

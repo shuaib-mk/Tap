@@ -89,9 +89,23 @@ class MainActivity : ComponentActivity() {
             try {
                 CardEmulation.getInstance(nfcAdapter).unsetPreferredService(this)
             } catch (_: Exception) {}
+        } else if (screen is TapScreen.ProximityShare && viewModel.isProximityReceiverRunning.value) {
+            // Receiver tab is active: enable Reader Mode to actively poll for sender's HCE tag
+            NfcSessionExchange.enableReaderMode(
+                this,
+                onSessionDiscovered = { offer ->
+                    viewModel.connectAndSend(offer)
+                },
+                onProximityDiscovered = { json ->
+                    viewModel.handleIncomingProximityNdefJson(json)
+                }
+            )
+            try {
+                CardEmulation.getInstance(nfcAdapter).unsetPreferredService(this)
+            } catch (_: Exception) {}
         } else {
-            // General operation (Contact Card, Home, Settings, etc.):
-            // MUST disable Reader Mode so Galaxy A54 acts as a passive HCE CARD for other phones!
+            // General operation (Contact Card, Home, Settings, Physical Tap to Share Sender):
+            // MUST disable Reader Mode so device acts as a passive HCE CARD for other phones!
             // Two reader/pollers cannot read each other; this device must emulate a Type 4 Tag.
             NfcSessionExchange.disableReaderMode(this)
             try {
@@ -146,8 +160,14 @@ class MainActivity : ComponentActivity() {
                 if (rawMessages != null && rawMessages.isNotEmpty()) {
                     val ndefMsg = rawMessages[0] as? android.nfc.NdefMessage
                     ndefMsg?.let { msg ->
-                        NfcSessionExchange.parseNdefMessage(msg)?.let { offer ->
-                            viewModel.connectAndSend(offer)
+                        val proximityJson = NfcSessionExchange.parseProximityNdefMessage(msg)
+                        if (proximityJson != null) {
+                            viewModel.navigateTo(TapScreen.ProximityShare)
+                            viewModel.handleIncomingProximityNdefJson(proximityJson)
+                        } else {
+                            NfcSessionExchange.parseNdefMessage(msg)?.let { offer ->
+                                viewModel.connectAndSend(offer)
+                            }
                         }
                     }
                 }

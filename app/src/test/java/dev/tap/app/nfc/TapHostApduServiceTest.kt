@@ -131,4 +131,40 @@ class TapHostApduServiceTest {
         val response = service.processCommandApdu(unknownAidApdu, null)
         assertArrayEquals(byteArrayOf(0x6A, 0x82.toByte()), response)
     }
+
+    @Test
+    fun testProximityNdefPayloadServedWhenActive() {
+        val customPayload = "TAP_PROXIMITY_NDEF_PAYLOAD".toByteArray(Charsets.UTF_8)
+        dev.tap.app.proximity.ProximityNdefRepository.setProximitySession("session_apdu_1", customPayload)
+
+        try {
+            // Select App
+            service.processCommandApdu(
+                byteArrayOf(0x00, 0xA4.toByte(), 0x04, 0x00, 0x07, 0xD2.toByte(), 0x76, 0x00, 0x00, 0x85.toByte(), 0x01, 0x01),
+                null
+            )
+            // Select NDEF File (E1 04)
+            service.processCommandApdu(
+                byteArrayOf(0x00, 0xA4.toByte(), 0x00, 0x0C, 0x02, 0xE1.toByte(), 0x04),
+                null
+            )
+            // Read first 2 bytes (NLEN)
+            val readNlenApdu = byteArrayOf(0x00, 0xB0.toByte(), 0x00, 0x00, 0x02)
+            val nlenResponse = service.processCommandApdu(readNlenApdu, null)
+
+            val expectedNlen = customPayload.size
+            assertEquals(((expectedNlen shr 8) and 0xFF).toByte(), nlenResponse[0])
+            assertEquals((expectedNlen and 0xFF).toByte(), nlenResponse[1])
+            assertEquals(0x90.toByte(), nlenResponse[2])
+            assertEquals(0x00.toByte(), nlenResponse[3])
+
+            // Read the custom payload
+            val readPayloadApdu = byteArrayOf(0x00, 0xB0.toByte(), 0x00, 0x02, customPayload.size.toByte())
+            val payloadResponse = service.processCommandApdu(readPayloadApdu, null)
+            val extracted = payloadResponse.copyOfRange(0, customPayload.size)
+            assertArrayEquals(customPayload, extracted)
+        } finally {
+            dev.tap.app.proximity.ProximityNdefRepository.clearProximitySession()
+        }
+    }
 }

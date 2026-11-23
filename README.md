@@ -1,4 +1,4 @@
-# TAP UNIVERSAL (v1.2.1) — Cross-Device Proximity-Sharing & Samsung Quick Share
+# TAP UNIVERSAL (v1.3.0) — Physical Tap to Share, Zero-Install Web Fallback & Cross-Device Proximity Platform
 
 TAP is a minimal, fast, privacy-focused proximity-sharing platform built for Android (specifically optimized and tested for the **Samsung Galaxy A54 5G** running One UI 6 / 7, Android 14/15, and backward-compatible down to Android 8.0 / API 26).
 
@@ -12,7 +12,7 @@ The receiver does **not** need TAP installed to receive contacts, photos, or fil
 
 - **Application Name**: TAP
 - **Application ID**: `dev.tap.app`
-- **Version**: `1.2.1` (VersionCode: `4`)
+- **Version**: `1.3.0` (VersionCode: `5`)
 - **Min SDK**: API 26 (Android 8.0 Oreo)
 - **Compile SDK**: API 36 (Android 15+)
 - **Target SDK**: API 36
@@ -22,124 +22,99 @@ The receiver does **not** need TAP installed to receive contacts, photos, or fil
 
 ---
 
-## 2. NEW in v1.2.1: Complete Proximity Engine & Security Hardening
+## 2. NEW in v1.3.0: Physical Tap to Share & Zero-Install Web Fallback
 
-TAP v1.2.1 completes the independent Proximity Engine and resolves all cryptographic and architectural gaps:
+TAP v1.3.0 delivers the full **Physical Tap to Share** system following the architectural feasibility report:
 
-1. **Full Bidirectional Proximity Transport**:
-   - **Sender & Receiver**: Operates both as a high-speed sender and an autonomous receiver listening on TCP port `8990`.
-   - **Wi-Fi Direct (`WifiP2pManager`)**: Supports autonomous P2P group creation (`ProximityP2pManager`) for router-less direct device-to-device transfers, with seamless fallback to local Wi-Fi / Hotspot networks.
-   - **Atomic File Saving**: Incoming chunks are decrypted on-the-fly and written to app-isolated cache storage, verified against the sender's SHA-256 digest, and atomically committed to MediaStore / Downloads directory via `FileManager.saveVerifiedFile`. Corrupted chunks or hash mismatches trigger immediate file deletion and transfer abort.
+### 1. TAP-to-TAP Physical Proximity Sharing (Primary Feature)
+- **Physical Tap Initiation**: Sender stages files and activates "Physical Tap to Share". Phone enters discoverable NFC Host Card Emulation (HCE) state emulating an NFC Forum Type 4 Tag.
+- **RF Poll Contention Prevention**: The Sender operates as a **Passive HCE Listener** (Reader Mode disabled). The Receiver operates as the **Poller/Reader**. This completely prevents RF carrier collision between two NFC phones.
+- **Automated P2P Connection**: Bringing the devices together physically triggers the NFC tap, exchanging ephemeral cryptographic session info via Type 4 HCE. No manual IP address entry is required.
+- **Short Authentication String (SAS)**: Ephemeral ECDH (`secp256r1`) agreement derives a deterministic 6-digit verification code (`calculateSasCode`) displayed on both screens (e.g. `482 193`). Public keys are lexicographically sorted to guarantee identical key derivation on both sides.
+- **Explicit Recipient Consent**: The receiver displays a prominent incoming transfer consent card with the sender's device name, file count, total size, and the matching 6-digit SAS code. Zero bytes are transferred until the recipient taps "Accept".
+- **Streaming AES-256-GCM Transfer**: Payloads are streamed in 256 KB encrypted chunks with strictly monotonic nonces (`chunkIndex` + direction byte + session entropy) over high-speed bidirectional TCP sockets (port 8990).
+- **Streaming SHA-256 Integrity Verification**: Payloads are verified on-the-fly against pre-computed SHA-256 digests and atomically committed to MediaStore / `Download/TAP`. Hash mismatches trigger immediate file destruction.
 
-2. **Cryptographic Hardening & MITM Protection**:
-   - **Short Authentication String (SAS)**: Derives a deterministic 6-digit verification code (`calculateSasCode`) displayed on both sender and receiver screens (e.g. `482 913`). Out-of-band comparison guarantees mathematical protection against Man-in-the-Middle (MITM) attacks.
-   - **Session-Bound Key Derivation**: HKDF-SHA256 binds the master AES-256 session key to `sessionId`, `senderDeviceId`, `receiverDeviceId`, and lexicographically ordered public keys, preventing cross-session replay and session-confusion attacks.
-   - **Monotonic Nonce Management**: Each 256 KB chunk uses a 12-byte IV consisting of an 8-byte monotonic `chunkIndex` (big-endian), a 1-byte direction indicator, and a 3-byte session entropy prefix.
-   - **Streaming SHA-256 Digest**: Pre-computed manifest hashes are verified end-to-end against the receiver's decrypted stream before persistent storage.
+### 2. Zero-Install NFC Web Sharing (Fallback for Devices Without TAP)
+- **NDEF Multi-Record Dispatch**: The emulated Type 4 Tag serves a multi-record NDEF payload:
+  1. Record 1: Custom MIME `application/vnd.dev.tap.proximity` (for TAP-to-TAP bootstrap).
+  2. Record 2: NFC Forum URI `http://<IP>:8989/?token=<sessionToken>` (for zero-install web fallback).
+  3. Record 3: Android Application Record (AAR) `dev.tap.app`.
+- **Zero-Install Web Download**: If the recipient phone does not have TAP installed (or is an iPhone), the native NFC dispatcher detects Record 2 and prompts to open Safari / Chrome.
+- **Short-Lived Single-Session Security**: Embedded `LocalHttpServer` enforces the session token. Any unauthorized requests without the token are rejected with `HTTP/1.1 403 Forbidden`. The token is cleanly revoked when the session ends.
 
-3. **Samsung Quick Share Integration (Preserved)**:
-   - Preserves direct handoff to `com.samsung.android.app.sharelive/.ShareActivity` with `FLAG_GRANT_READ_URI_PERMISSION`. Users on Samsung Galaxy devices can launch native One UI Quick Share with one tap.
-
-4. **100% Feature Preservation**:
-   - Digital Contact Card, Always-Ready Background NFC HCE, Physical Tag Writer, QR Scanner, 15 Screens, and payment coexistence remain fully functional.
-
----
-
-## 3. Universal Contact Sharing (Preserved & Always-Ready)
-
-When sharing a contact card from the **Samsung Galaxy A54 5G**, the receiving phone does **not** need TAP installed:
-
-1. **Digital Contact Profile & Granular Privacy**:
-   - Customize name, title, company, phone, email, website, social profiles (LinkedIn, GitHub, X), and notes.
-   - Field privacy checkboxes: choose exactly which details are shared and keep sensitive information private.
-2. **Standards-Compliant vCard 3.0 & 4.0**:
-   - Formatted to RFC 2426 (vCard 3.0) and RFC 6350 (vCard 4.0), natively understood by Apple iOS, Android, macOS, and Windows.
-3. **Four Universal Sharing Methods (No Recipient App Needed)**:
-   - **Method 1: Physical NFC Tag (NFC Card Writer)**: Hold the Galaxy A54 to an NFC tag (NTAG213, NTAG215, NTAG216, Mifare). TAP encodes the vCard NDEF record. Any iPhone (XR to iPhone 16) or Android device taps the tag and immediately prompts "Add to Contacts".
-   - **Method 2: Universal QR Contact Card**: TAP generates a high-contrast vCard QR code. Scannable by 100% of native camera apps on iPhone and Android with instant 1-tap contact import.
-   - **Method 3: Local Web Browser Sharing (Embedded HTTP Server)**: TAP spins up a lightweight embedded HTTP server on port 8989 (`http://<A54-IP>:8989/`). Recipient joins same Wi-Fi or Galaxy A54 Hotspot, scans the link, and downloads `.vcf` directly in Safari or Chrome.
-   - **Method 4: System Sharesheet Export**: Export the `.vcf` file directly to Samsung Quick Share, Google Nearby Share, WhatsApp, Email, or Messages.
+### 3. Preserved Features (100% Intact & Verified)
+- **Digital Contact Card**: RFC 2426 / 6350 vCard generation with granular field privacy toggles.
+- **Always-Ready Background NFC HCE**: Tapping the Galaxy A54 while locked or on the home screen shares the contact card directly.
+- **Physical NFC Tag Writer**: Encodes external physical NFC cards (NTAG213, NTAG215, NTAG216, Mifare).
+- **QR Scanner & Viewfinder**: Scans peer TAP sessions or contact QR codes with manual JSON fallback.
+- **Samsung Quick Share Handoff**: Preserved optional 1-tap delegation to `com.samsung.android.app.sharelive/.ShareActivity`.
+- **Payment Coexistence**: Uses ISO 7816-4 AID category `other`, ensuring zero conflict with Google Wallet / Samsung Pay.
 
 ---
 
-## 4. The 15 Product Screens
+## 3. Product Screens & Architecture
 
 TAP features a unified Dark Charcoal (`#090B10`) and Soft Lime (`#B7F36B`) design across 15 interactive screens:
 
-1. **Home (`HomeScreen`)**: Central command center with Universal Mode status pills, pulsing NFC ring, Send/Receive toggle, Digital Contact Card hero banner, and the new Proximity File Sharing card.
-2. **Send (`FilePickerScreen`)**: Multi-content selector for Photos, Videos, Documents, Arbitrary Files, Links, and Contacts, with total payload size and Quick Share handoff.
-3. **Receive (`QrConnectScreen`)**: Dual-mode receiver interface supporting TAP-to-TAP encrypted sessions and Local Web Browser Sharing with live URL and QR.
-4. **Nearby Devices (`DiscoveryScreen`)**: High-contrast radar animation discovering local BLE beacons and Wi-Fi peers.
+1. **Home (`HomeScreen`)**: Central hub with Universal Mode status pills, pulsing NFC ring, Send/Receive toggle, Digital Contact Card banner, and Proximity File Sharing card.
+2. **Send (`FilePickerScreen`)**: Multi-content selector for Photos, Videos, Documents, Arbitrary Files, Links, and Contacts.
+3. **Receive (`QrConnectScreen`)**: Dual-mode receiver interface supporting TAP encrypted sessions and Local Web Browser Sharing with live URL and QR code.
+4. **Nearby Devices (`DiscoveryScreen`)**: High-contrast radar animation discovering local BLE beacons and Wi-Fi Direct peers.
 5. **NFC Readiness (`NfcReadinessScreen`)**: Real-time mode selector and hardware checklist across Mode A, Mode B, and Mode C.
 6. **Contact Card (`ContactCardScreen`)**: Personal digital identity card preview, field privacy toggles, and instant sharing action buttons.
 7. **NFC Card Writer (`NfcCardWriterScreen`)**: Live NFC tag encoder with tag capacity checking, writing progress, and success feedback.
-8. **QR Scanner (`QrScannerScreen`)**: Viewfinder to scan peer TAP sessions or vCard contact QR codes, with manual JSON input fallback.
+8. **QR Scanner (`QrScannerScreen`)**: Viewfinder to scan peer TAP sessions or vCard contact QR codes.
 9. **Receiver Approval (`ReceiverApprovalScreen`)**: Explicit security gate displaying sender name, manifest, total size, and Accept/Reject actions.
-10. **Transfer Progress (`TransferProgressScreen`)**: Real-time progress bar, transfer throughput in MB/s, ETA counter, and cancel button.
+10. **Transfer Progress (`TransferProgressScreen`)**: Real-time progress bar, throughput in MB/s, ETA counter, and cancel button.
 11. **Transfer Complete (`TransferCompleteScreen`)**: Success checkmark, SHA-256 integrity verification badge, and direct file launcher.
-12. **Transfer History (`HistoryScreen`)**: Reactive SQLite transfer log with Sent/Received filters, file sizes, and deletion controls.
+12. **Transfer History (`HistoryScreen`)**: Reactive SQLite transfer log with Sent/Received filters and file sizes.
 13. **Settings (`SettingsScreen`)**: Device name, default ports, storage directories, and privacy overview.
 14. **Compatibility Diagnostics (`CompatibilityDiagnosticsScreen`)**: Runtime hardware audit of NFC, HCE, BLE, Wi-Fi, Camera, One UI, and native sharing.
-15. **Proximity File Sharing (`ProximityShareScreen`)**: Dedicated Samsung Quick Share Tap to Share and TAP high-speed encrypted proximity file transfer hub with live multi-category file staging.
+15. **Proximity File Sharing (`ProximityShareScreen`)**: Dedicated Physical Tap to Share hub with pulsing NFC radar, 6-digit SAS verification code dialog, live progress indicator, and Samsung Quick Share handoff.
 
 ---
 
-## 4. NFC Universal Subsystem: 3 Distinct Operating Modes
+## 4. Hardware Compatibility Matrix
 
-- **Mode A: TAP-to-TAP Handshake**:
-  - Exclusively for devices with TAP installed.
-  - Tapping devices exchanges a short-lived session token (ephemeral ECDH public key, IP, and port) over NFC HCE/Reader Mode.
-  - Heavy file payload is negotiated separately over direct Wi-Fi TCP sockets.
-- **Mode B: Universal NFC Contact Card**:
-  - Standards-based vCard NDEF generation for physical NFC tags.
-  - Granular privacy filtering: unselected fields are excluded from the output.
-  - Automatic fallback to compact NDEF URI records if physical tag storage is constrained (e.g. NTAG213).
-- **Mode C: Background HCE Tag Emulation**:
-  - Emulates an NFC Forum Type 4 Tag with AID `D2760000850101` and proprietary AID `F04E464354415000`.
-  - Implements ISO/IEC 7816-4 APDUs: SELECT NDEF, SELECT CC, READ CC, SELECT NDEF FILE, READ NDEF FILE.
-  - Operates under the `other` category to ensure zero interference with Google Wallet / Samsung Pay.
+| Recipient Device | Protocol / Mode | Result | Recipient App Required? |
+| :--- | :--- | :---: | :---: |
+| **Android Phone with TAP** | Physical Tap to Share (NFC + TCP) | **Instant Transfer with SAS** | Yes (TAP) |
+| **Android Phone without TAP** | Zero-Install Web Fallback (NFC URI) | **Direct Browser Download** | **NO** |
+| **Android Phone without TAP** | Background NFC Contact vCard | **Native "Add to Contacts"** | **NO** |
+| **Apple iPhone (XS - 16)** | Zero-Install Web Fallback (NFC URI) | **Direct Safari Download** | **NO** |
+| **Apple iPhone (XS - 16)** | Physical NFC Tag Written by TAP | **Native iOS Contact Banner** | **NO** |
+| **Apple iPhone (XS - 16)** | Universal QR Contact Card | **Native iOS Camera Scan** | **NO** |
+| **Desktop / Laptop (Win/Mac/Linux)** | Local Web Browser Sharing | **Direct Browser Download** | **NO** |
+| **Samsung Galaxy (One UI 6.x - 9.5)** | Samsung Quick Share Handoff | **Native Quick Share Transfer** | **NO** (Quick Share) |
 
 ---
 
-## 5. Universal Device Compatibility Matrix
+## 5. Security & Cryptographic Specifications
 
-See the comprehensive [COMPATIBILITY.md](file:///c:/Users/q04ti/Downloads/TAP-Android-starter/TAP-Android/COMPATIBILITY.md) for full hardware analysis.
-
-| Device Ecosystem | Protocol / Mode | Status | Recipient App Required? |
-| :--- | :--- | :--- | :---: |
-| **Samsung Galaxy A54 5G** (Host) | All Modes (A, B, C, Web, Sharesheet) | **Verified on Hardware** | Host device |
-| **Samsung Galaxy S/A Series** | Mode A (TAP-to-TAP) | **Fully Implemented** | Yes (TAP) |
-| **Samsung Galaxy S/A Series** | Mode B (Universal Contact) | **Fully Implemented** | **NO** |
-| **Google Pixel (6 - 9)** | Mode A (TAP-to-TAP) | **Fully Implemented** | Yes (TAP) |
-| **Google Pixel (6 - 9)** | Mode B (Universal Contact) | **Fully Implemented** | **NO** |
-| **Xiaomi / Redmi / POCO** | Mode A & B | **Fully Implemented** | Only for Mode A |
-| **OnePlus / OPPO / Vivo** | Mode A & B | **Fully Implemented** | Only for Mode A |
-| **Apple iPhone (iOS 14 - 18)** | Universal Contact Card | **Fully Implemented** | **NO (Physical Tag, Camera QR, Safari Web)** |
-| **Apple iPhone (iOS 14 - 18)** | Local Web File Download | **Fully Implemented** | **NO (Safari on Wi-Fi / Hotspot)** |
-| **Desktop (Win / Mac / Linux)** | Local Web Sharing | **Fully Implemented** | **NO (Any standard browser)** |
+1. **Key Agreement**: Ephemeral Elliptic Curve Diffie-Hellman (ECDH) over curve `secp256r1`.
+2. **Symmetric Key Derivation**: HKDF-SHA256 (`HMAC-SHA256` extract-and-expand) binding session key to `sessionId`, `senderDeviceId`, `receiverDeviceId`, and lexicographically ordered public keys (`$lowerPub:$higherPub`).
+3. **Short Authentication String (SAS)**: 6-digit human-verifiable authentication code computed from HKDF info string with lexicographically sorted public keys to eliminate Man-in-the-Middle (MITM) risks.
+4. **Transport Encryption**: AES-256-GCM with 96-bit monotonically incrementing IV per 256 KB chunk and 128-bit authentication tag.
+5. **Data Integrity**: Streaming SHA-256 digest calculated over unencrypted input streams and verified byte-for-byte by the receiver before atomic filesystem commit.
+6. **Zero-Install Web Security**: Embedded HTTP server enforces short-lived single-session random tokens. Requests lacking the token return `HTTP/1.1 403 Forbidden`.
 
 ---
 
-## 6. Security Architecture
+## 6. Build and Verification Instructions
 
-1. **Authenticated Key Exchange**: Ephemeral ECDH over NIST curve `secp256r1`.
-2. **Key Derivation**: HKDF-SHA256 (`HMAC-SHA256` extract-and-expand) deriving a 256-bit symmetric session key.
-3. **Chunked Encryption**: AES-256-GCM with 96-bit unique IV per 256 KB chunk and 128-bit authentication tag.
-4. **Data Integrity**: Streaming SHA-256 hash computed incrementally on unencrypted plaintext and verified by receiver post-transfer.
-5. **No Cloud Relay**: Zero bytes touch external third-party servers.
-
----
-
-## 7. Build and Installation Instructions
-
-### Prerequisites
-- JDK 17 (Temurin OpenJDK 17.0.20.1)
-- Android SDK (API 34/35/36, Build-Tools 35.0.0 or 36.0.0)
-
-### Running Automated Tests
+### Automated Unit Test Suite
 ```powershell
 .\gradlew.bat testDebugUnitTest
 ```
+**Results**: 38 tests executed, **0 failures, 0 errors** across:
+- `ProximitySharingTest`: 12 tests (ECDH, SAS matching, MITM resistance, AES-GCM chunking, handshake state machine, SHA-256 integrity, NDEF repository, offer/response round-trip).
+- `TapHostApduServiceTest`: 8 tests (ISO 7816-4 APDUs, Select AID, CC file, NDEF file read, proximity payload injection).
+- `CapabilitiesTest`: 3 tests (Hardware capability detection).
+- `ContactCardTest`: 5 tests (vCard 3.0/4.0 formatting, field privacy filters).
+- `TapSecurityTest`: 5 tests (Filename sanitization, MIME validation).
+- `TapProtocolTest`: 3 tests (JSON serialization).
+- `SelectedFileTest`: 2 tests (File sizing and formatting).
 
 ### Compiling APKs
 ```powershell
@@ -149,48 +124,35 @@ See the comprehensive [COMPATIBILITY.md](file:///c:/Users/q04ti/Downloads/TAP-An
 # Build Unsigned Release APK
 .\gradlew.bat assembleRelease
 ```
-
-### Installing on Samsung Galaxy A54 5G
-```powershell
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
+- **Debug APK**: `app/build/outputs/apk/debug/app-debug.apk`
+- **Release APK**: `app/build/outputs/apk/release/app-release-unsigned.apk`
 
 ---
 
-## 8. Physical Device Verification Instructions
+## 7. Two-Device Physical Testing Guide
 
-### Test 1: TAP Proximity File Sharing (Two Android Devices)
-1. Install TAP v1.2.1 on Device A (Sender) and Device B (Receiver).
-2. Connect both devices to the same local Wi-Fi or turn on Portable Hotspot on Device A and connect Device B.
-3. **On Device B (Receiver)**:
-   - Open TAP → Tap **Proximity File Sharing** card on HomeScreen.
-   - Switch to **"Receive Mode"** tab.
-   - Tap **"Start Proximity Receiver"** (status changes to *"Proximity Receiver Active - Listening on port 8990"*).
-4. **On Device A (Sender)**:
-   - Open TAP → Tap **Proximity File Sharing** card.
-   - Tap **"Media"** or **"Files"** and select 1 photo and 1 PDF.
-   - Tap **"TAP Proximity Direct Transfer"**.
-   - In the IP dialog, enter Device B's local IP (e.g. `192.168.1.15`).
-   - Tap **"Connect & Send"**.
-5. **Approval & Short Authentication String (SAS) Verification**:
-   - Device B immediately rings with the **Incoming Proximity Transfer** card showing Device A's name, file count, and a prominent 6-digit verification code (e.g. `482 913`).
-   - Confirm the exact same 6-digit code appears on Device A.
-   - Tap **"Accept"** on Device B.
-6. **Integrity & Progress Verification**:
-   - Both devices display the real-time progress bar and transfer speed (MB/s).
-   - Once all chunks are received, Device B verifies the streaming SHA-256 hash.
-   - Green badge **"SHA-256 Verified ✓"** appears and the files are saved directly to `Download/TAP`.
+### Test 1: TAP-to-TAP Physical Tap to Share (Phone A -> Phone B)
+1. Install `app-debug.apk` on Phone A (Samsung Galaxy A54) and Phone B.
+2. Connect both phones to the same Wi-Fi or turn on Portable Hotspot on Phone A and connect Phone B.
+3. **On Phone A (Sender)**:
+   - Open TAP → Tap **Proximity File Sharing**.
+   - Tap **"Media"** or **"Files"** and select files.
+   - Tap **"Physical Tap to Share"**.
+   - The card pulses with *"Ready to Tap! Hold backs of phones together to transfer"*.
+4. **On Phone B (Receiver)**:
+   - Unlock Phone B and touch its back against Phone A.
+5. **Approval & SAS Verification**:
+   - Phone B's screen automatically displays the **Incoming Proximity Transfer** card with Phone A's name, file count, and a prominent 6-digit code (e.g. `482 193`).
+   - Confirm the exact same 6-digit code appears on Phone A.
+   - Tap **"Accept"** on Phone B.
+6. **High-Speed Transfer & Integrity Check**:
+   - Both devices display the live progress bar and transfer speed (MB/s).
+   - Once all chunks are received and decrypted, Phone B verifies the SHA-256 checksum.
+   - Green badge **"SHA-256 Verified ✓"** appears and the files are saved to `Download/TAP`.
 
-### Test 2: Samsung Quick Share Tap to Share Handoff
-1. On Galaxy A54: Open TAP → **Proximity File Sharing**.
-2. Pick files → Tap **"Share via Samsung Quick Share"**.
-3. Verify Samsung's native Quick Share activity launches immediately with staged files.
-4. Unlock the nearby Samsung Galaxy phone (One UI 6.x, 7.x, 9.5) and tap the receiver avatar to execute the native transfer.
-
-### Test 3: Background NFC Tap Sharing While TAP is Closed
-1. On Galaxy A54: Open TAP → **Contact Card** → Fill in Name and Phone → Tap Save.
-2. Enable **"Background Tap Sharing"**.
-3. Return to Android Home screen or lock screen (screen ON).
-4. Tap another NFC-enabled Android phone to the back of the A54.
-5. The receiving phone immediately reads the Type 4 NDEF vCard and opens the native "Add to Contacts" prompt.
-
+### Test 2: Zero-Install NFC Web Sharing (Phone A -> iPhone / Phone without TAP)
+1. On Phone A: Stage files and tap **"Physical Tap to Share"**.
+2. Touch the back of an iPhone (screen unlocked) to the back of Phone A.
+3. The iPhone native NFC banner appears: *"Website Tag: http://192.168...:8989/?token=..."*.
+4. Tap the notification on iPhone: Safari opens and displays the download buttons for each shared file.
+5. Tap **"Download"** to save the files directly in Safari without installing TAP.
