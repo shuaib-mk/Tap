@@ -107,3 +107,39 @@ In previous iterations, tapping two phones together while TAP was open failed be
 | **OnePlus / OPPO / Realme** | OxygenOS / ColorOS | **YES (Full)** | **NO** | Native Contacts import prompt. |
 | **Motorola** | My UX / Android 13-15 | **YES (Full)** | **NO** | Native Google Contacts import prompt. |
 | **Apple iPhone (XS - 16)** | iOS 14 - 18 | **Requires Open Reader / Tag** | NO (for Tag/QR)<br>Yes (for HCE) | Background passive HCE blocked by Apple OS policy. Use Physical Tag (written via TAP), QR, or Local Web. |
+
+---
+
+## 6. Samsung Quick Share Tap to Share & Proximity File Sharing Analysis
+
+### Technical Architecture & Knox Security Boundaries
+
+1. **Samsung Quick Share Architecture**:
+   - Package: `com.samsung.android.app.sharelive`
+   - Receiver Component: `com.samsung.android.app.sharelive.ShareActivity`
+   - Permissions: `com.samsung.android.permission.SHARE_LIVE` and `com.samsung.android.permission.QUICKSHARE_SERVICE`
+   - **Protection Level**: `signatureOrSystem` (Secured by Samsung platform private signing keys).
+
+2. **Can Third-Party Apps Directly Transmit Native Quick Share BLE Packets?**:
+   - **No**: Samsung Quick Share uses proprietary Bluetooth Low Energy advertising payloads with Samsung Manufacturer Data ID `0x0075`. The BLE payload contains proprietary encrypted discovery hashes verified exclusively by Samsung's proprietary daemon.
+   - Forging these frames from a user-space non-Samsung app is blocked by Android BLE advertising permission checks, hardware filtering, and Samsung's internal Knox verification.
+   - Any third-party app claiming to natively emulate Samsung Quick Share without system signature permissions is fraudulent or relying on unstable private IPC reflection that breaks across minor security updates.
+
+3. **Official & Supported Samsung Tap to Share Mechanism (Implemented in TAP v1.2.0)**:
+   - TAP implements direct component invocation:
+     ```kotlin
+     Intent().apply {
+         action = Intent.ACTION_SEND_MULTIPLE // or ACTION_SEND
+         component = ComponentName("com.samsung.android.app.sharelive", "com.samsung.android.app.sharelive.ShareActivity")
+         putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+     }
+     ```
+   - This immediately launches Samsung Quick Share's Tap to Share radar with the selected files staged. When the Samsung Galaxy A54 is brought close to another Samsung device running One UI 6, 7, 8, or 9.5, Samsung's proximity subsystem immediately executes the native transfer.
+
+4. **Independent TAP High-Speed Proximity Transfer Engine**:
+   - For cross-brand proximity sharing (e.g. Galaxy to Pixel, Xiaomi, PC, or another TAP device), TAP runs an autonomous high-speed peer-to-peer engine:
+     - Ephemeral ECDH (`secp256r1`) key agreement + HKDF-SHA256 derivation.
+     - AES-256-GCM chunk encryption (256 KB frames with 96-bit unique IVs).
+     - High-speed direct Wi-Fi TCP streaming with streaming SHA-256 integrity verification.
+

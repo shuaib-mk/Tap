@@ -15,6 +15,7 @@ sealed class TapScreen {
     object History : TapScreen()
     object Settings : TapScreen()
     object CompatibilityDiagnostics : TapScreen()
+    object ProximityShare : TapScreen()
     object About : TapScreen()
 
     // Backward compatibility aliases

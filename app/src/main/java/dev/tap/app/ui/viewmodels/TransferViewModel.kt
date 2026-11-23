@@ -55,6 +55,30 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     private val transferClient = TransferClient(application, sessionManager, historyRepo)
     private val localHttpServer = LocalHttpServer(application)
     private val contactRepo = ContactCardRepository.getInstance(application)
+    val proximityEngine = dev.tap.app.proximity.ProximitySharingEngine(application)
+    val stagedProximityFiles = proximityEngine.stagedFiles
+    val proximityEngineState = proximityEngine.engineState
+    val proximityProgress = proximityEngine.progress
+
+    fun stageProximityUris(uris: List<Uri>) {
+        proximityEngine.stageUris(uris)
+    }
+
+    fun removeProximityFile(file: dev.tap.app.proximity.ProximityFile) {
+        proximityEngine.removeStagedFile(file)
+    }
+
+    fun clearProximityFiles() {
+        proximityEngine.clearStagedFiles()
+    }
+
+    fun launchQuickShareHandoff() {
+        proximityEngine.launchSamsungQuickShareHandoff()
+    }
+
+    fun cancelProximityTransfer() {
+        proximityEngine.cancelActiveTransfer()
+    }
 
     // Navigation state
     private val _currentScreen = MutableStateFlow<TapScreen>(TapScreen.Home)

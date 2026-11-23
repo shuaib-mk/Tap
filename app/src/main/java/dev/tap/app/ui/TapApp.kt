@@ -46,6 +46,7 @@ fun TapApp(viewModel: TransferViewModel = viewModel()) {
                 is TapScreen.Settings -> SettingsScreen(viewModel)
                 is TapScreen.CompatibilityDiagnostics -> CompatibilityDiagnosticsScreen(viewModel)
                 is TapScreen.About -> AboutScreen(viewModel)
+                is TapScreen.ProximityShare -> ProximityShareScreen(viewModel)
             }
         }
     }

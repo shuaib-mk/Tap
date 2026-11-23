@@ -1,4 +1,4 @@
-# TAP UNIVERSAL — Cross-Device Proximity-Sharing Platform
+# TAP UNIVERSAL (v1.2.0) — Cross-Device Proximity-Sharing & Samsung Quick Share
 
 TAP is a minimal, fast, privacy-focused proximity-sharing platform built for Android (specifically optimized and tested for the **Samsung Galaxy A54 5G** running One UI 6 / 7, Android 14/15, and backward-compatible down to Android 8.0 / API 26).
 
@@ -12,7 +12,7 @@ The receiver does **not** need TAP installed to receive contacts, photos, or fil
 
 - **Application Name**: TAP
 - **Application ID**: `dev.tap.app`
-- **Version**: `1.1.0` (VersionCode: `2`)
+- **Version**: `1.2.0` (VersionCode: `3`)
 - **Min SDK**: API 26 (Android 8.0 Oreo)
 - **Compile SDK**: API 36 (Android 15+)
 - **Target SDK**: API 36
@@ -22,7 +22,26 @@ The receiver does **not** need TAP installed to receive contacts, photos, or fil
 
 ---
 
-## 2. Universal Contact Sharing (Top Priority Feature)
+## 2. NEW in v1.2.0: Proximity File Sharing & Samsung Quick Share Tap to Share
+
+TAP v1.2.0 introduces **Proximity File Sharing** with dedicated interoperability for Samsung Galaxy devices (One UI 6.x, 7.x, 8.x, 9.5) and Galaxy A54 5G:
+
+1. **Samsung Quick Share Tap to Share Integration**:
+   - Detects `com.samsung.android.app.sharelive` (Samsung Quick Share) and One UI version at runtime.
+   - Stages multi-category files (Photos, Videos, Audio, PDFs, Documents, Archives) with auto-resolved content URIs.
+   - Hands off directly to `com.samsung.android.app.sharelive/.ShareActivity` with `FLAG_GRANT_READ_URI_PERMISSION`.
+   - On compatible Galaxy devices (e.g. Galaxy A54 brought close to another Galaxy running One UI), this triggers Samsung's native proximity radar and Tap to Share prompt without friction.
+2. **TAP Native High-Speed Proximity Engine**:
+   - For non-Samsung devices or independent transfers, TAP runs its own zero-cloud proximity engine.
+   - **Ephemeral Security**: ECDH (`secp256r1`) key agreement + HKDF-SHA256 key derivation + AES-256-GCM chunk encryption.
+   - **Streaming Transport**: High-speed TCP socket streaming 256 KB encrypted chunks with real-time throughput (MB/s) and streaming SHA-256 checksums.
+3. **Dedicated Screen & Home Screen Entry**:
+   - Access via the **"Proximity File Sharing"** hero card on the Home Screen.
+   - Categorized picker for Media & Documents, staged file preview with category badges, and dual transfer modes ("Share via Samsung Quick Share" & "TAP Proximity Transfer").
+
+---
+
+## 3. Universal Contact Sharing (Preserved & Always-Ready)
 
 When sharing a contact card from the **Samsung Galaxy A54 5G**, the receiving phone does **not** need TAP installed:
 
@@ -39,11 +58,11 @@ When sharing a contact card from the **Samsung Galaxy A54 5G**, the receiving ph
 
 ---
 
-## 3. The 14 Product Screens
+## 4. The 15 Product Screens
 
-TAP features a unified Dark Charcoal (`#090B10`) and Soft Lime (`#B7F36B`) design across 14 interactive screens:
+TAP features a unified Dark Charcoal (`#090B10`) and Soft Lime (`#B7F36B`) design across 15 interactive screens:
 
-1. **Home (`HomeScreen`)**: Central command center with Universal Mode status pills, pulsing NFC ring, Send/Receive toggle, and the Digital Contact Card hero banner.
+1. **Home (`HomeScreen`)**: Central command center with Universal Mode status pills, pulsing NFC ring, Send/Receive toggle, Digital Contact Card hero banner, and the new Proximity File Sharing card.
 2. **Send (`FilePickerScreen`)**: Multi-content selector for Photos, Videos, Documents, Arbitrary Files, Links, and Contacts, with total payload size and Quick Share handoff.
 3. **Receive (`QrConnectScreen`)**: Dual-mode receiver interface supporting TAP-to-TAP encrypted sessions and Local Web Browser Sharing with live URL and QR.
 4. **Nearby Devices (`DiscoveryScreen`)**: High-contrast radar animation discovering local BLE beacons and Wi-Fi peers.
@@ -57,6 +76,7 @@ TAP features a unified Dark Charcoal (`#090B10`) and Soft Lime (`#B7F36B`) desig
 12. **Transfer History (`HistoryScreen`)**: Reactive SQLite transfer log with Sent/Received filters, file sizes, and deletion controls.
 13. **Settings (`SettingsScreen`)**: Device name, default ports, storage directories, and privacy overview.
 14. **Compatibility Diagnostics (`CompatibilityDiagnosticsScreen`)**: Runtime hardware audit of NFC, HCE, BLE, Wi-Fi, Camera, One UI, and native sharing.
+15. **Proximity File Sharing (`ProximityShareScreen`)**: Dedicated Samsung Quick Share Tap to Share and TAP high-speed encrypted proximity file transfer hub with live multi-category file staging.
 
 ---
 
