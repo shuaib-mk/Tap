@@ -5,6 +5,8 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
+import android.util.Log
+import dev.tap.app.discovery.nfc.NfcSessionExchange
 import dev.tap.app.history.TransferHistoryRepository
 import dev.tap.app.history.data.TransferRecord
 import dev.tap.app.protocol.TransferDirection
@@ -30,6 +32,7 @@ sealed class AnywhereEngineState {
     data class WaitingForPeer(val sessionCode: String, val shareLink: String) : AnywhereEngineState()
     data class IncomingTransferRequest(
         val senderDeviceName: String,
+        val senderDeviceId: String,
         val files: List<FileManifestDto>,
         val totalBytes: Long,
         val sasCode: String,
@@ -42,12 +45,13 @@ sealed class AnywhereEngineState {
 }
 
 /**
- * Unified Anywhere File Transfer Engine for TAP v1.4.0.
+ * Unified Anywhere File Transfer Engine for TAP.
  *
  * Coordinates:
  * - True Anywhere Transfer over WebRTC DataChannels (across Wi-Fi, 4G, 5G, NATs)
  * - Automatic STUN NAT discovery and COTURN relay fallback
  * - 6-character short session codes (e.g. TAP-4829) and instant share links
+ * - Dual-channel signaling (public relay + local subnet UDP multicast)
  * - Ephemeral ECDH key agreement and 6-digit SAS verification
  * - Resumable 64 KB chunk transport with streaming SHA-256 validation
  * - Zero-install NFC proximity initiation & Physical Tap to Share
@@ -81,6 +85,11 @@ class AnywhereTransferEngine(
     private var pendingManifests: List<FileManifestDto> = emptyList()
     private var remotePublicKeyBase64: String? = null
     private var remoteDeviceName: String = "Remote Device"
+    private var remoteDeviceId: String = "receiver"
+
+    // Synchronization flags to eliminate race conditions
+    private var isDataChannelReady = false
+    private var isPeerAccepted = false
 
     init {
         signalingClient.listener = this
@@ -121,6 +130,7 @@ class AnywhereTransferEngine(
     fun clearStagedFiles() {
         _stagedFiles.value = emptyList()
         _engineState.value = AnywhereEngineState.Idle
+        ProximityNdefRepository.clearProximitySession()
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -133,14 +143,10 @@ class AnywhereTransferEngine(
             return
         }
 
-        // Check if offline: if no internet, fallback to offline Wi-Fi Direct
-        if (!isInternetAvailable) {
-            startOfflineNearbyShare()
-            return
-        }
+        isDataChannelReady = false
+        isPeerAccepted = false
 
-        _engineState.value = AnywhereEngineState.CreatingSession("Connecting to signaling network...")
-        signalingClient.connect()
+        _engineState.value = AnywhereEngineState.CreatingSession("Initializing transfer network...")
 
         scope.launch(Dispatchers.IO) {
             try {
@@ -175,8 +181,16 @@ class AnywhereTransferEngine(
                     signalingClient.sendSdpOffer(sdp.description)
                 }
 
-                // Also update proximity NDEF repository so bringing another phone close can initiate via NFC!
+                // Update Proximity NDEF repository so bringing another phone close initiates via NFC!
                 val shareUrl = "https://tap.dev/s/$code"
+                val proximityPayload = """{"sessionId":"${signalingClient.currentSessionId}","sessionCode":"$code","senderDeviceName":"$deviceName","host":"$shareUrl"}"""
+                val proximityNdef = NfcSessionExchange.createProximityNdefMessage(proximityPayload, shareUrl)
+                ProximityNdefRepository.setProximitySession(
+                    sessionId = signalingClient.currentSessionId ?: code,
+                    ndefBytes = proximityNdef.toByteArray(),
+                    webFallbackUrl = shareUrl
+                )
+
                 _engineState.value = AnywhereEngineState.WaitingForPeer(sessionCode = code, shareLink = shareUrl)
             } catch (e: Exception) {
                 _engineState.value = AnywhereEngineState.Error("Failed to initiate transfer session: ${e.message}")
@@ -188,19 +202,17 @@ class AnywhereTransferEngine(
     // RECEIVER WORKFLOW
     // ---------------------------------------------------------------------------------------------
     fun joinAnywhereShare(codeOrId: String) {
-        if (!isInternetAvailable) {
-            _engineState.value = AnywhereEngineState.Error("Internet required for remote transfer. Switch to Offline Nearby Mode if devices are close.")
-            return
-        }
+        val normalized = TapSignalingClient.normalizeSessionCode(codeOrId)
+        _engineState.value = AnywhereEngineState.CreatingSession("Connecting to $normalized...")
 
-        _engineState.value = AnywhereEngineState.CreatingSession("Joining session $codeOrId...")
-        signalingClient.connect()
+        isDataChannelReady = false
+        isPeerAccepted = false
 
         scope.launch(Dispatchers.IO) {
             peerConnectionManager.createPeerConnection()
             val pubKey = securityManager.getPublicKeyBase64()
             signalingClient.joinSession(
-                codeOrId = codeOrId,
+                codeOrId = normalized,
                 deviceId = deviceId,
                 deviceName = deviceName,
                 publicKeyBase64 = pubKey
@@ -243,7 +255,8 @@ class AnywhereTransferEngine(
 
     override fun onPeerJoined(peerDeviceName: String, peerDeviceId: String) {
         this.remoteDeviceName = peerDeviceName
-        // Send transfer manifest
+        this.remoteDeviceId = peerDeviceId
+        // Send transfer manifest to peer
         signalingClient.sendTransferManifest(pendingManifests, securityManager.getPublicKeyBase64(), deviceName)
     }
 
@@ -266,6 +279,7 @@ class AnywhereTransferEngine(
         val remotePub = payload.publicKeyBase64 ?: ""
         remotePublicKeyBase64 = remotePub
         remoteDeviceName = payload.deviceName
+        remoteDeviceId = payload.senderId
 
         // Ephemeral ECDH + SAS
         val sas = if (remotePub.isNotBlank()) securityManager.calculateSasCode(remotePub, sid) else "000 000"
@@ -279,6 +293,7 @@ class AnywhereTransferEngine(
         val deferred = CompletableDeferred<Boolean>()
         _engineState.value = AnywhereEngineState.IncomingTransferRequest(
             senderDeviceName = payload.deviceName,
+            senderDeviceId = payload.senderId,
             files = payload.files,
             totalBytes = payload.totalBytes,
             sasCode = sas,
@@ -312,11 +327,13 @@ class AnywhereTransferEngine(
         val sid = signalingClient.currentSessionId ?: ""
         if (!publicKey.isNullOrBlank()) {
             val sas = securityManager.calculateSasCode(publicKey, sid)
-            val key = securityManager.deriveSessionKey(publicKey, sid, deviceId, "receiver")
+            val key = securityManager.deriveSessionKey(publicKey, sid, deviceId, remoteDeviceId)
             chunkTransport.setSessionParameters(key, sid, sas)
         }
 
+        isPeerAccepted = true
         _engineState.value = AnywhereEngineState.Connecting(remoteDeviceName, peerConnectionManager.transportType)
+        checkAndStartSenderTransfer()
     }
 
     override fun onSessionError(error: String) {
@@ -333,18 +350,29 @@ class AnywhereTransferEngine(
     override fun onConnectionStateChanged(state: WebRtcConnectionState, transportType: WebRtcTransportType) {
         when (state) {
             WebRtcConnectionState.CONNECTED -> {
-                // Connection established!
+                Log.d("AnywhereEngine", "WebRTC Connection established via $transportType")
             }
             WebRtcConnectionState.DISCONNECTED,
             WebRtcConnectionState.FAILED -> {
-                _engineState.value = AnywhereEngineState.Error("WebRTC connection lost.")
+                if (_engineState.value !is AnywhereEngineState.Completed) {
+                    _engineState.value = AnywhereEngineState.Error("WebRTC connection lost.")
+                }
             }
             else -> {}
         }
     }
 
     override fun onDataChannelReady(isSender: Boolean) {
+        isDataChannelReady = true
         if (isSender) {
+            checkAndStartSenderTransfer()
+        } else {
+            _engineState.value = AnywhereEngineState.Transferring(chunkTransport.progress.value, peerConnectionManager.transportType)
+        }
+    }
+
+    private fun checkAndStartSenderTransfer() {
+        if (isDataChannelReady && isPeerAccepted) {
             _engineState.value = AnywhereEngineState.Transferring(chunkTransport.progress.value, peerConnectionManager.transportType)
             chunkTransport.sendFiles(
                 scope = scope,
@@ -353,6 +381,7 @@ class AnywhereTransferEngine(
                 onCompleted = {
                     val count = _stagedFiles.value.size
                     val bytes = _stagedFiles.value.sumOf { it.sizeBytes }
+                    ProximityNdefRepository.clearProximitySession()
                     _engineState.value = AnywhereEngineState.Completed(count, bytes)
                     scope.launch {
                         historyRepo.insert(
@@ -373,8 +402,6 @@ class AnywhereTransferEngine(
                     _engineState.value = AnywhereEngineState.Error(err)
                 }
             )
-        } else {
-            _engineState.value = AnywhereEngineState.Transferring(chunkTransport.progress.value, peerConnectionManager.transportType)
         }
     }
 
@@ -383,6 +410,7 @@ class AnywhereTransferEngine(
             bytes = data,
             onFileVerified = { name -> },
             onAllCompleted = { count, bytes ->
+                ProximityNdefRepository.clearProximitySession()
                 _engineState.value = AnywhereEngineState.Completed(count, bytes)
                 scope.launch {
                     historyRepo.insert(
@@ -410,6 +438,9 @@ class AnywhereTransferEngine(
     }
 
     fun cancelActiveTransfer() {
+        isDataChannelReady = false
+        isPeerAccepted = false
+        ProximityNdefRepository.clearProximitySession()
         chunkTransport.cancelTransfer()
         peerConnectionManager.close()
         signalingClient.disconnect()

@@ -8,11 +8,14 @@ import android.nfc.cardemulation.CardEmulation
 import android.os.Build
 import android.os.Bundle
 import android.os.Parcelable
+import android.provider.ContactsContract
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
+import dev.tap.app.contacts.ContactCard
 import dev.tap.app.discovery.nfc.NfcSessionExchange
 import dev.tap.app.navigation.TapScreen
 import dev.tap.app.nfc.TapHostApduService
@@ -38,13 +41,19 @@ class MainActivity : ComponentActivity() {
         // Request initial required permissions
         requestAppPermissions()
 
-        // Handle intent (Sharesheet or NFC)
+        // Handle intent (Sharesheet, deep link, or NFC)
         handleIntent(intent)
 
-        // Dynamically manage Reader Mode vs HCE Card Emulation based on active screen
+        // Dynamically manage Reader Mode vs HCE Card Emulation based on active screen and receive state
         lifecycleScope.launch {
             viewModel.currentScreen.collect { screen ->
-                updateNfcOperatingMode(screen)
+                updateNfcOperatingMode(screen, viewModel.isReceiveModeActive.value)
+            }
+        }
+
+        lifecycleScope.launch {
+            viewModel.isReceiveModeActive.collect { isReceiveActive ->
+                updateNfcOperatingMode(viewModel.currentScreen.value, isReceiveActive)
             }
         }
 
@@ -57,7 +66,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        updateNfcOperatingMode(viewModel.currentScreen.value)
+        updateNfcOperatingMode(viewModel.currentScreen.value, viewModel.isReceiveModeActive.value)
     }
 
     override fun onPause() {
@@ -71,48 +80,64 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun updateNfcOperatingMode(screen: TapScreen) {
+    private fun updateNfcOperatingMode(screen: TapScreen, isReceiveActive: Boolean) {
         val nfcAdapter = NfcAdapter.getDefaultAdapter(this) ?: return
         if (!nfcAdapter.isEnabled) return
 
-        if (screen is TapScreen.NfcCardWriter) {
-            // Screen requires active RF polling to write external physical NFC tags
+        val shouldEnableReaderMode = screen is TapScreen.NfcCardWriter ||
+                screen is TapScreen.QrScanner ||
+                screen is TapScreen.Receive ||
+                isReceiveActive ||
+                (screen is TapScreen.ProximityShare && viewModel.isProximityReceiverRunning.value)
+
+        if (shouldEnableReaderMode) {
+            // Enable Reader Mode to actively poll for nearby tags/cards
             NfcSessionExchange.enableReaderMode(
-                this,
+                activity = this,
                 onSessionDiscovered = { offer ->
                     viewModel.connectAndSend(offer)
                 },
                 onTagDiscovered = { tag ->
                     viewModel.handleNfcTagDiscovered(tag)
-                }
-            )
-            try {
-                CardEmulation.getInstance(nfcAdapter).unsetPreferredService(this)
-            } catch (_: Exception) {}
-        } else if (screen is TapScreen.ProximityShare && viewModel.isProximityReceiverRunning.value) {
-            // Receiver tab is active: enable Reader Mode to actively poll for sender's HCE tag
-            NfcSessionExchange.enableReaderMode(
-                this,
-                onSessionDiscovered = { offer ->
-                    viewModel.connectAndSend(offer)
                 },
                 onProximityDiscovered = { json ->
                     viewModel.handleIncomingProximityNdefJson(json)
+                },
+                onSessionCodeDiscovered = { code ->
+                    Toast.makeText(this, "Session Code Detected: $code", Toast.LENGTH_SHORT).show()
+                    viewModel.joinAnywhereShare(code)
+                    viewModel.navigateTo(TapScreen.TransferProgress)
+                },
+                onContactCardDiscovered = { card ->
+                    showContactCardImportPrompt(card)
                 }
             )
             try {
                 CardEmulation.getInstance(nfcAdapter).unsetPreferredService(this)
             } catch (_: Exception) {}
         } else {
-            // General operation (Contact Card, Home, Settings, Physical Tap to Share Sender):
-            // MUST disable Reader Mode so device acts as a passive HCE CARD for other phones!
-            // Two reader/pollers cannot read each other; this device must emulate a Type 4 Tag.
+            // General operation: Emulate Type 4 Tag HCE so other phones can tap this device
             NfcSessionExchange.disableReaderMode(this)
             try {
                 val cardEmulation = CardEmulation.getInstance(nfcAdapter)
                 cardEmulation.setPreferredService(this, ComponentName(this, TapHostApduService::class.java))
             } catch (_: Exception) {}
         }
+    }
+
+    private fun showContactCardImportPrompt(card: ContactCard) {
+        Toast.makeText(this, "Received contact for ${card.displayName}", Toast.LENGTH_SHORT).show()
+        val insertIntent = Intent(Intent.ACTION_INSERT, ContactsContract.Contacts.CONTENT_URI).apply {
+            putExtra(ContactsContract.Intents.Insert.NAME, card.displayName)
+            putExtra(ContactsContract.Intents.Insert.COMPANY, card.company)
+            putExtra(ContactsContract.Intents.Insert.JOB_TITLE, card.jobTitle)
+            putExtra(ContactsContract.Intents.Insert.PHONE, card.phone)
+            putExtra(ContactsContract.Intents.Insert.EMAIL, card.email)
+            putExtra(ContactsContract.Intents.Insert.NOTES, card.notes)
+        }
+        try {
+            startActivity(insertIntent)
+        } catch (_: Exception) {}
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -134,12 +159,20 @@ class MainActivity : ComponentActivity() {
                     intent.getParcelableExtra<Parcelable>(Intent.EXTRA_STREAM) as? Uri
                 }
                 if (uri != null) {
-                    viewModel.addFiles(listOf(uri))
+                    viewModel.stageAnywhereUris(listOf(uri))
                     viewModel.navigateTo(TapScreen.FilePicker)
                 } else {
                     intent.getStringExtra(Intent.EXTRA_TEXT)?.let { text ->
-                        viewModel.addLink(text)
-                        viewModel.navigateTo(TapScreen.FilePicker)
+                        if (text.contains("tap.dev/s/")) {
+                            val code = text.substringAfter("tap.dev/s/").substringBefore("?").substringBefore("/").trim()
+                            if (code.isNotBlank()) {
+                                viewModel.joinAnywhereShare(code)
+                                viewModel.navigateTo(TapScreen.TransferProgress)
+                            }
+                        } else {
+                            viewModel.addLink(text)
+                            viewModel.navigateTo(TapScreen.FilePicker)
+                        }
                     }
                 }
             }
@@ -151,8 +184,18 @@ class MainActivity : ComponentActivity() {
                     intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
                 }
                 if (!uris.isNullOrEmpty()) {
-                    viewModel.addFiles(uris)
+                    viewModel.stageAnywhereUris(uris)
                     viewModel.navigateTo(TapScreen.FilePicker)
+                }
+            }
+            Intent.ACTION_VIEW -> {
+                val data = intent.dataString
+                if (!data.isNullOrBlank() && data.contains("tap.dev/s/")) {
+                    val code = data.substringAfter("tap.dev/s/").substringBefore("?").substringBefore("/").trim()
+                    if (code.isNotBlank()) {
+                        viewModel.joinAnywhereShare(code)
+                        viewModel.navigateTo(TapScreen.TransferProgress)
+                    }
                 }
             }
             NfcAdapter.ACTION_NDEF_DISCOVERED -> {
@@ -160,14 +203,33 @@ class MainActivity : ComponentActivity() {
                 if (rawMessages != null && rawMessages.isNotEmpty()) {
                     val ndefMsg = rawMessages[0] as? android.nfc.NdefMessage
                     ndefMsg?.let { msg ->
+                        // 1. Proximity JSON
                         val proximityJson = NfcSessionExchange.parseProximityNdefMessage(msg)
                         if (proximityJson != null) {
                             viewModel.navigateTo(TapScreen.ProximityShare)
                             viewModel.handleIncomingProximityNdefJson(proximityJson)
-                        } else {
-                            NfcSessionExchange.parseNdefMessage(msg)?.let { offer ->
-                                viewModel.connectAndSend(offer)
-                            }
+                            return
+                        }
+
+                        // 2. Anywhere Session Code
+                        val sessionCode = NfcSessionExchange.parseSessionCode(msg)
+                        if (sessionCode != null) {
+                            Toast.makeText(this, "Session Code Detected: $sessionCode", Toast.LENGTH_SHORT).show()
+                            viewModel.joinAnywhereShare(sessionCode)
+                            viewModel.navigateTo(TapScreen.TransferProgress)
+                            return
+                        }
+
+                        // 3. Contact Card vCard
+                        val card = NfcSessionExchange.parseVCard(msg)
+                        if (card != null) {
+                            showContactCardImportPrompt(card)
+                            return
+                        }
+
+                        // 4. Legacy SessionOffer
+                        NfcSessionExchange.parseNdefMessage(msg)?.let { offer ->
+                            viewModel.connectAndSend(offer)
                         }
                     }
                 }

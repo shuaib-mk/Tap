@@ -77,8 +77,14 @@ class TransferSecurityManager {
             "$remotePublicKeyBase64:$localPub"
         }
 
+        val orderedIds = if (senderId <= receiverId) {
+            "$senderId:$receiverId"
+        } else {
+            "$receiverId:$senderId"
+        }
+
         val salt = "TAP_PROXIMITY_V2:$sessionId".toByteArray(Charsets.UTF_8)
-        val info = "TAP_KEY:$senderId:$receiverId:$orderedKeys".toByteArray(Charsets.UTF_8)
+        val info = "TAP_KEY:$orderedIds:$orderedKeys".toByteArray(Charsets.UTF_8)
 
         return hkdfSha256(rawSecret, salt, info, 32)
     }

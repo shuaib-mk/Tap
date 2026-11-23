@@ -49,10 +49,17 @@ fun HomeScreen(viewModel: TransferViewModel) {
     var showReceiveDialog by remember { mutableStateOf(false) }
     var receiveCodeInput by remember { mutableStateOf("") }
 
+    LaunchedEffect(showReceiveDialog) {
+        viewModel.setReceiveModeActive(showReceiveDialog)
+    }
+
     // Dialog for entering a 6-character remote pairing code
     if (showReceiveDialog) {
         AlertDialog(
-            onDismissRequest = { showReceiveDialog = false },
+            onDismissRequest = {
+                showReceiveDialog = false
+                viewModel.setReceiveModeActive(false)
+            },
             title = {
                 Text(
                     "Receive Files",
@@ -65,7 +72,7 @@ fun HomeScreen(viewModel: TransferViewModel) {
             text = {
                 Column {
                     Text(
-                        "Enter the 6-character pairing code from the sender's phone:",
+                        "Enter the pairing code from sender, or hold phone back-to-back to tap & connect:",
                         fontFamily = AnthropicSerifText,
                         color = TapMuted,
                         fontSize = 13.sp
@@ -87,6 +94,20 @@ fun HomeScreen(viewModel: TransferViewModel) {
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.fillMaxWidth()
                     )
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 4.dp)
+                    ) {
+                        Icon(Icons.Rounded.Nfc, contentDescription = null, tint = TapAccent, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "NFC active — physical tap connects automatically",
+                            color = TapAccent,
+                            fontSize = 11.sp,
+                            fontFamily = AnthropicSerifText
+                        )
+                    }
                 }
             },
             confirmButton = {
@@ -94,6 +115,7 @@ fun HomeScreen(viewModel: TransferViewModel) {
                     onClick = {
                         if (receiveCodeInput.isNotBlank()) {
                             showReceiveDialog = false
+                            viewModel.setReceiveModeActive(false)
                             val code = receiveCodeInput.trim()
                             viewModel.joinAnywhereShare(code)
                             viewModel.navigateTo(TapScreen.TransferProgress)
@@ -106,7 +128,10 @@ fun HomeScreen(viewModel: TransferViewModel) {
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showReceiveDialog = false }) {
+                TextButton(onClick = {
+                    showReceiveDialog = false
+                    viewModel.setReceiveModeActive(false)
+                }) {
                     Text("Cancel", fontFamily = AnthropicSerifText, color = TapMuted)
                 }
             },

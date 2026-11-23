@@ -235,7 +235,28 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     val clientProgress: StateFlow<TransferProgress> = transferClient.progress
 
     val activeProgress: TransferProgress
-        get() = if (_mode.value == "Send") clientProgress.value else serverProgress.value
+        get() {
+            val anywhere = anywhereProgress.value
+            if (anywhere.totalBytes > 0 || anywhere.isComplete) {
+                return TransferProgress(
+                    state = if (anywhere.isComplete) TransferState.COMPLETE else TransferState.TRANSFERRING,
+                    bytesTransferred = anywhere.bytesTransferred,
+                    totalBytes = anywhere.totalBytes,
+                    currentFileName = anywhere.currentFileName,
+                    currentFileIndex = anywhere.currentFileIndex,
+                    totalFiles = anywhere.totalFiles,
+                    speedBytesPerSec = anywhere.speedBytesPerSec
+                )
+            }
+            return if (_mode.value == "Send") clientProgress.value else serverProgress.value
+        }
+
+    private val _isReceiveModeActive = MutableStateFlow(false)
+    val isReceiveModeActive: StateFlow<Boolean> = _isReceiveModeActive.asStateFlow()
+
+    fun setReceiveModeActive(active: Boolean) {
+        _isReceiveModeActive.value = active
+    }
 
     // Pending incoming request on receiver
     val pendingIncomingRequest: StateFlow<TransferRequest?> = transferServer.pendingRequest
@@ -295,6 +316,26 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
             pendingIncomingRequest.collect { req ->
                 if (req != null) {
                     navigateTo(TapScreen.ReceiverApproval)
+                }
+            }
+        }
+
+        // Collect anywhereEngine state for automatic screen navigation
+        viewModelScope.launch {
+            anywhereEngine.engineState.collect { state ->
+                when (state) {
+                    is dev.tap.app.webrtc.AnywhereEngineState.IncomingTransferRequest -> {
+                        navigateTo(TapScreen.ReceiverApproval)
+                    }
+                    is dev.tap.app.webrtc.AnywhereEngineState.Transferring -> {
+                        if (_currentScreen.value != TapScreen.TransferProgress) {
+                            navigateTo(TapScreen.TransferProgress)
+                        }
+                    }
+                    is dev.tap.app.webrtc.AnywhereEngineState.Completed -> {
+                        navigateTo(TapScreen.TransferComplete)
+                    }
+                    else -> {}
                 }
             }
         }

@@ -34,7 +34,14 @@ class TurnConfigProvider(private val context: Context) {
             "stun:stun.l.google.com:19302",
             "stun:stun1.l.google.com:19302",
             "stun:stun2.l.google.com:19302",
-            "stun:stun.cloudflare.com:3478"
+            "stun:stun.cloudflare.com:3478",
+            "stun:stun.services.mozilla.com"
+        )
+
+        val DEFAULT_TURN_RELAYS = listOf(
+            Triple("turn:openrelay.metered.ca:80", "openrelayproject", "openrelayproject"),
+            Triple("turn:openrelay.metered.ca:443", "openrelayproject", "openrelayproject"),
+            Triple("turn:openrelay.metered.ca:443?transport=tcp", "openrelayproject", "openrelayproject")
         )
 
         /**
@@ -107,6 +114,17 @@ class TurnConfigProvider(private val context: Context) {
                             .createIceServer()
                     )
                 }
+            }
+        }
+
+        if (!isCustomEnabled) {
+            DEFAULT_TURN_RELAYS.forEach { (uri, user, pass) ->
+                servers.add(
+                    PeerConnection.IceServer.builder(uri)
+                        .setUsername(user)
+                        .setPassword(pass)
+                        .createIceServer()
+                )
             }
         }
 

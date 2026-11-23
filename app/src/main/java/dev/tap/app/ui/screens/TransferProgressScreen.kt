@@ -1,9 +1,20 @@
 package dev.tap.app.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.widget.Toast
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -12,18 +23,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.tap.app.discovery.qr.QrCodeGenerator
 import dev.tap.app.navigation.TapScreen
 import dev.tap.app.proximity.ProximityFile
 import dev.tap.app.ui.components.*
+import dev.tap.app.ui.theme.AnthropicSerifDisplay
+import dev.tap.app.ui.theme.AnthropicSerifText
 import dev.tap.app.ui.viewmodels.TransferViewModel
 import dev.tap.app.webrtc.AnywhereEngineState
 import dev.tap.app.webrtc.WebRtcTransportType
 
 @Composable
 fun TransferProgressScreen(viewModel: TransferViewModel) {
+    val context = LocalContext.current
     val anywhereState by viewModel.anywhereState.collectAsState()
     val progress by viewModel.anywhereProgress.collectAsState()
     val isPaused = viewModel.anywhereEngine.chunkTransport.isPaused
@@ -42,140 +60,284 @@ fun TransferProgressScreen(viewModel: TransferViewModel) {
                 TapTopBar(
                     title = "Transfer",
                     subtitle = "Encrypted peer-to-peer data channel",
-                    onBack = { viewModel.navigateTo(TapScreen.Home) }
+                    onBack = {
+                        viewModel.cancelAnywhereTransfer()
+                        viewModel.navigateTo(TapScreen.Home)
+                    }
                 )
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp))
 
-                // Peer and Connection Card
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = TapPanel,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                // 1. SENDER WAITING FOR RECIPIENT STATE
+                if (anywhereState is AnywhereEngineState.WaitingForPeer) {
+                    val waiting = anywhereState as AnywhereEngineState.WaitingForPeer
+                    val qrBitmap = remember(waiting.sessionCode) {
+                        QrCodeGenerator.generateQrBitmap("https://tap.dev/s/${waiting.sessionCode}", 500, 500)
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = TapPanel,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, TapBorder),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("PEER CONNECTION", color = TapMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                            val transportLabel = when (viewModel.anywhereEngine.peerConnectionManager.transportType) {
-                                WebRtcTransportType.DIRECT_P2P -> "Direct P2P"
-                                WebRtcTransportType.TURN_RELAY -> "TURN Relay"
-                                WebRtcTransportType.OFFLINE_DIRECT -> "Wi-Fi Direct"
-                                WebRtcTransportType.UNKNOWN -> "Connecting..."
-                            }
-                            StatusChip(
-                                label = transportLabel,
-                                active = true,
-                                accentColor = if (viewModel.anywhereEngine.peerConnectionManager.transportType == WebRtcTransportType.TURN_RELAY) Color(0xFFFBBF24) else TapAccent
-                            )
-                        }
-
-                        Spacer(Modifier.height(10.dp))
-
-                        val peerTitle = when (val s = anywhereState) {
-                            is AnywhereEngineState.Connecting -> s.peerName
-                            is AnywhereEngineState.IncomingTransferRequest -> s.senderDeviceName
-                            is AnywhereEngineState.WaitingForPeer -> "Waiting for peer (Code: ${s.sessionCode})"
-                            is AnywhereEngineState.Completed -> "Transfer Finished"
-                            else -> "Transferring"
-                        }
-
-                        Text(peerTitle, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            if (progress.totalFiles > 0) "${progress.currentFileIndex} of ${progress.totalFiles} files" else "Establishing secure link...",
-                            color = TapMuted,
-                            fontSize = 12.sp
-                        )
-
-                        // SAS Security Verification Box (when code is derived)
-                        val sas = progress.sasVerificationCode
-                        if (sas.isNotBlank()) {
-                            Spacer(Modifier.height(14.dp))
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(TapAccent.copy(alpha = 0.12f))
-                                    .padding(10.dp),
-                                contentAlignment = Alignment.Center
+                            Column(
+                                modifier = Modifier.padding(20.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("VERIFICATION CODE", color = TapAccent, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                                    Spacer(Modifier.height(2.dp))
-                                    Text(sas, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = 3.sp)
-                                    Spacer(Modifier.height(2.dp))
-                                    Text("Confirm matching code on peer screen", color = TapMuted, fontSize = 10.sp)
+                                Text(
+                                    "PAIRING CODE",
+                                    color = TapAccent,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.5.sp,
+                                    fontFamily = AnthropicSerifDisplay
+                                )
+                                Spacer(Modifier.height(6.dp))
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(TapPanelLight)
+                                        .clickable {
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            clipboard.setPrimaryClip(ClipData.newPlainText("TAP Code", waiting.sessionCode))
+                                            Toast.makeText(context, "Code copied: ${waiting.sessionCode}", Toast.LENGTH_SHORT).show()
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = waiting.sessionCode,
+                                        fontFamily = AnthropicSerifDisplay,
+                                        fontSize = 32.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color.White,
+                                        letterSpacing = 2.sp
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Icon(Icons.Rounded.ContentCopy, contentDescription = "Copy", tint = TapAccent, modifier = Modifier.size(20.dp))
+                                }
+
+                                Spacer(Modifier.height(16.dp))
+
+                                // QR Code Box
+                                Box(
+                                    modifier = Modifier
+                                        .size(210.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(Color.White)
+                                        .padding(10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (qrBitmap != null) {
+                                        Image(
+                                            bitmap = qrBitmap.asImageBitmap(),
+                                            contentDescription = "Session QR Code",
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    } else {
+                                        CircularProgressIndicator(color = TapInk)
+                                    }
+                                }
+
+                                Spacer(Modifier.height(16.dp))
+
+                                Text(
+                                    "Enter this code on the other phone, scan the QR code, or bring phones together to tap & connect via NFC.",
+                                    color = TapMuted,
+                                    fontSize = 12.sp,
+                                    fontFamily = AnthropicSerifText,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(horizontal = 8.dp)
+                                )
+
+                                Spacer(Modifier.height(14.dp))
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(TapInk)
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(TapAccent)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        "Listening for receiver...",
+                                        color = TapAccent,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        fontFamily = AnthropicSerifText
+                                    )
                                 }
                             }
                         }
                     }
-                }
-
-                Spacer(Modifier.height(16.dp))
-
-                // Live Transfer Progress Card
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = TapPanel,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                } else if (anywhereState is AnywhereEngineState.Error) {
+                    // 2. ERROR STATE
+                    val err = (anywhereState as AnywhereEngineState.Error).message
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFF2A1519),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, TapRed.copy(alpha = 0.5f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text(
-                                if (progress.isComplete) "Completed" else progress.currentFileName.ifBlank { "Preparing files..." },
-                                color = Color.White,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 1,
-                                modifier = Modifier.weight(1f, fill = false)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                if (progress.isComplete) "100%" else progress.formattedSpeed,
-                                color = TapAccent,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Icon(Icons.Rounded.ErrorOutline, contentDescription = null, tint = TapRed, modifier = Modifier.size(36.dp))
+                            Spacer(Modifier.height(10.dp))
+                            Text("Connection Failed", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = AnthropicSerifDisplay)
+                            Spacer(Modifier.height(6.dp))
+                            Text(err, color = TapMuted, fontSize = 13.sp, textAlign = TextAlign.Center, fontFamily = AnthropicSerifText)
                         }
+                    }
+                } else {
+                    // 3. CONNECTING OR ACTIVE TRANSFER STATE
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = TapPanel,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("PEER CONNECTION", color = TapMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                                val transportLabel = when (viewModel.anywhereEngine.peerConnectionManager.transportType) {
+                                    WebRtcTransportType.DIRECT_P2P -> "Direct P2P"
+                                    WebRtcTransportType.TURN_RELAY -> "TURN Relay"
+                                    WebRtcTransportType.OFFLINE_DIRECT -> "Wi-Fi Direct"
+                                    WebRtcTransportType.UNKNOWN -> "Connecting..."
+                                }
+                                StatusChip(
+                                    label = transportLabel,
+                                    active = true,
+                                    accentColor = if (viewModel.anywhereEngine.peerConnectionManager.transportType == WebRtcTransportType.TURN_RELAY) Color(0xFFFBBF24) else TapAccent
+                                )
+                            }
 
-                        Spacer(Modifier.height(10.dp))
+                            Spacer(Modifier.height(10.dp))
 
-                        LinearProgressIndicator(
-                            progress = { if (progress.isComplete) 1f else progress.percent },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(3.dp)),
-                            color = if (progress.isComplete) TapGreen else TapAccent,
-                            trackColor = TapPanelLight
-                        )
+                            val peerTitle = when (val s = anywhereState) {
+                                is AnywhereEngineState.Connecting -> s.peerName
+                                is AnywhereEngineState.IncomingTransferRequest -> s.senderDeviceName
+                                is AnywhereEngineState.Completed -> "Transfer Finished"
+                                is AnywhereEngineState.CreatingSession -> s.status
+                                else -> "Transferring"
+                            }
 
-                        Spacer(Modifier.height(10.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                            Text(peerTitle, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = AnthropicSerifDisplay)
+                            Spacer(Modifier.height(4.dp))
                             Text(
-                                "${ProximityFile.formatBytes(progress.bytesTransferred)} / ${ProximityFile.formatBytes(progress.totalBytes)}",
+                                if (progress.totalFiles > 0) "${progress.currentFileIndex} of ${progress.totalFiles} files" else "Establishing secure link...",
                                 color = TapMuted,
-                                fontSize = 11.sp
+                                fontSize = 12.sp,
+                                fontFamily = AnthropicSerifText
                             )
-                            if (progress.isComplete) {
-                                Text("SHA-256 Verified ✓", color = TapGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            } else if (progress.speedBytesPerSec > 0 && progress.totalBytes > progress.bytesTransferred) {
-                                val remainingBytes = progress.totalBytes - progress.bytesTransferred
-                                val remainingSec = remainingBytes / progress.speedBytesPerSec
-                                Text("~${remainingSec}s remaining", color = TapMuted, fontSize = 11.sp)
+
+                            // SAS Security Verification Box
+                            val sas = progress.sasVerificationCode
+                            if (sas.isNotBlank()) {
+                                Spacer(Modifier.height(14.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(TapAccent.copy(alpha = 0.12f))
+                                        .padding(10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("VERIFICATION CODE", color = TapAccent, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(sas, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = 3.sp)
+                                        Spacer(Modifier.height(2.dp))
+                                        Text("Confirm matching code on peer screen", color = TapMuted, fontSize = 10.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // Live Transfer Progress Card
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = TapPanel,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    if (progress.isComplete) "Completed" else progress.currentFileName.ifBlank { "Preparing files..." },
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    if (progress.isComplete) "100%" else progress.formattedSpeed,
+                                    color = TapAccent,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Spacer(Modifier.height(10.dp))
+
+                            LinearProgressIndicator(
+                                progress = { if (progress.isComplete) 1f else progress.percent },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(6.dp)
+                                    .clip(RoundedCornerShape(3.dp)),
+                                color = if (progress.isComplete) TapGreen else TapAccent,
+                                trackColor = TapPanelLight
+                            )
+
+                            Spacer(Modifier.height(10.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "${ProximityFile.formatBytes(progress.bytesTransferred)} / ${ProximityFile.formatBytes(progress.totalBytes)}",
+                                    color = TapMuted,
+                                    fontSize = 11.sp
+                                )
+                                if (progress.isComplete) {
+                                    Text("SHA-256 Verified ✓", color = TapGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                } else if (progress.speedBytesPerSec > 0 && progress.totalBytes > progress.bytesTransferred) {
+                                    val remainingBytes = progress.totalBytes - progress.bytesTransferred
+                                    val remainingSec = remainingBytes / progress.speedBytesPerSec
+                                    Text("~${remainingSec}s remaining", color = TapMuted, fontSize = 11.sp)
+                                }
                             }
                         }
                     }
@@ -184,9 +346,12 @@ fun TransferProgressScreen(viewModel: TransferViewModel) {
 
             // Bottom Action Controls
             Column(modifier = Modifier.padding(bottom = 16.dp)) {
-                if (progress.isComplete) {
+                if (progress.isComplete || anywhereState is AnywhereEngineState.Completed) {
                     Button(
-                        onClick = { viewModel.navigateTo(TapScreen.Home) },
+                        onClick = {
+                            viewModel.cancelAnywhereTransfer()
+                            viewModel.navigateTo(TapScreen.Home)
+                        },
                         colors = ButtonDefaults.buttonColors(containerColor = TapAccent, contentColor = TapInk),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
@@ -194,6 +359,34 @@ fun TransferProgressScreen(viewModel: TransferViewModel) {
                             .height(50.dp)
                     ) {
                         Text("Done", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+                } else if (anywhereState is AnywhereEngineState.Error) {
+                    Button(
+                        onClick = {
+                            viewModel.cancelAnywhereTransfer()
+                            viewModel.navigateTo(TapScreen.Home)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = TapPanelLight, contentColor = Color.White),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                    ) {
+                        Text("Return Home", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+                } else if (anywhereState is AnywhereEngineState.WaitingForPeer) {
+                    Button(
+                        onClick = {
+                            viewModel.cancelAnywhereTransfer()
+                            viewModel.navigateTo(TapScreen.Home)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = TapPanel, contentColor = TapMuted),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                    ) {
+                        Text("Cancel Transfer", fontWeight = FontWeight.Medium, fontSize = 13.sp)
                     }
                 } else {
                     Row(
