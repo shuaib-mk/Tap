@@ -25,101 +25,207 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.tap.app.navigation.TapScreen
 import dev.tap.app.transfer.SelectedFile
 
-val TapInk = Color(0xFF090B10)
-val TapPanel = Color(0xFF141923)
-val TapPanelLight = Color(0xFF1C2331)
-val TapMuted = Color(0xFF9BA6B5)
-val TapAccent = Color(0xFFB7F36B)
-val TapBorder = Color(0xFF28303D)
-val TapRed = Color(0xFFFF5252)
+// MetroList-inspired refined palette
+val TapInk = Color(0xFF090A0E)
+val TapPanel = Color(0xFF13151B)
+val TapPanelLight = Color(0xFF1A1D24)
+val TapMuted = Color(0xFF8E939E)
+val TapAccent = Color(0xFFA3E635)
+val TapBorder = Color(0xFF1F242E)
+val TapRed = Color(0xFFF87171)
+val TapGreen = Color(0xFF4ADE80)
 
 @Composable
 fun TapTopBar(
     title: String,
+    subtitle: String? = null,
     onBack: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 16.dp, bottom = 16.dp),
+            .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (onBack != null) {
-            IconButton(onClick = onBack) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(TapPanel)
+            ) {
                 Icon(
                     Icons.AutoMirrored.Rounded.ArrowBack,
                     contentDescription = "Back",
-                    tint = Color.White
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
                 )
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(12.dp))
         }
-        Text(
-            text = title,
-            color = Color.White,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp
-        )
-        Spacer(Modifier.weight(1f))
-        actions()
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-0.5).sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    text = subtitle,
+                    color = TapMuted,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Normal
+                )
+            }
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            actions()
+        }
     }
 }
 
 @Composable
-fun StatusChip(label: String, active: Boolean) {
+fun StatusChip(
+    label: String,
+    active: Boolean = true,
+    accentColor: Color = TapAccent
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (active) Color(0x22B7F36B) else Color(0x229BA6B5))
-            .padding(horizontal = 10.dp, vertical = 5.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (active) accentColor.copy(alpha = 0.12f) else TapPanelLight)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
         Box(
             modifier = Modifier
-                .size(7.dp)
+                .size(6.dp)
                 .clip(CircleShape)
-                .background(if (active) TapAccent else TapMuted)
+                .background(if (active) accentColor else TapMuted)
         )
         Spacer(Modifier.width(6.dp))
         Text(
             text = label,
-            color = if (active) TapAccent else TapMuted,
+            color = if (active) Color.White else TapMuted,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium
         )
     }
 }
 
+/**
+ * Clean, typography-led bottom navigation bar (MetroList style).
+ * Keeps navigation focused on 4 core areas:
+ * 1. Share (Home)
+ * 2. Activity (History)
+ * 3. Identity (Contacts)
+ * 4. Settings
+ */
 @Composable
-fun ActionTile(
-    label: String,
-    icon: ImageVector,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
+fun MetroBottomBar(
+    currentScreen: TapScreen,
+    onNavigate: (TapScreen) -> Unit
 ) {
-    OutlinedButton(
-        onClick = onClick,
-        modifier = modifier.height(78.dp),
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, TapBorder),
-        colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = TapPanel,
-            contentColor = Color.White
-        ),
-        contentPadding = PaddingValues(6.dp)
+    val items = listOf(
+        Triple("Share", Icons.Rounded.SwapVert, TapScreen.Home),
+        Triple("Activity", Icons.Rounded.ReceiptLong, TapScreen.History),
+        Triple("Identity", Icons.Rounded.Badge, TapScreen.ContactCard),
+        Triple("Settings", Icons.Rounded.Tune, TapScreen.Settings)
+    )
+
+    Surface(
+        color = TapPanel,
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, contentDescription = null, tint = TapAccent, modifier = Modifier.size(26.dp))
-            Spacer(Modifier.height(4.dp))
-            Text(label, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            items.forEach { (label, icon, destination) ->
+                val selected = when (destination) {
+                    is TapScreen.Home -> currentScreen is TapScreen.Home
+                    is TapScreen.History -> currentScreen is TapScreen.History || currentScreen is TapScreen.Activity
+                    is TapScreen.ContactCard -> currentScreen is TapScreen.ContactCard
+                    is TapScreen.Settings -> currentScreen is TapScreen.Settings || currentScreen is TapScreen.CompatibilityDiagnostics
+                    else -> currentScreen == destination
+                }
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onNavigate(destination) }
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = label,
+                        tint = if (selected) TapAccent else TapMuted,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = label,
+                        color = if (selected) Color.White else TapMuted,
+                        fontSize = 11.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                    )
+                }
+            }
         }
+    }
+}
+
+fun formatFileSize(bytes: Long): String {
+    if (bytes <= 0) return "0 B"
+    val units = arrayOf("B", "KB", "MB", "GB", "TB")
+    val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt().coerceIn(0, units.size - 1)
+    return String.format("%.1f %s", bytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
+}
+
+@Composable
+fun TapButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    isPrimary: Boolean = true,
+    enabled: Boolean = true
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(50.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (isPrimary) TapAccent else TapPanel,
+            contentColor = if (isPrimary) TapInk else Color.White,
+            disabledContainerColor = TapPanel.copy(alpha = 0.5f),
+            disabledContentColor = TapMuted
+        )
+    ) {
+        Text(
+            text = text,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 
@@ -210,7 +316,7 @@ fun FileCard(
             modifier = Modifier
                 .size(42.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0x22B7F36B)),
+                .background(TapPanelLight),
             contentAlignment = Alignment.Center
         ) {
             Icon(icon, contentDescription = null, tint = TapAccent, modifier = Modifier.size(22.dp))
@@ -249,31 +355,31 @@ fun FileCard(
 }
 
 @Composable
-fun TapButton(
-    text: String,
-    onClick: () -> Unit,
+fun ActionTile(
+    label: String,
+    icon: ImageVector,
     modifier: Modifier = Modifier,
-    isPrimary: Boolean = true,
-    enabled: Boolean = true
+    onClick: () -> Unit
 ) {
-    Button(
+    OutlinedButton(
         onClick = onClick,
-        enabled = enabled,
-        modifier = modifier
-            .fillMaxWidth()
-            .height(52.dp),
-        shape = RoundedCornerShape(14.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = if (isPrimary) TapAccent else TapPanel,
-            contentColor = if (isPrimary) TapInk else Color.White,
-            disabledContainerColor = TapPanel.copy(alpha = 0.5f),
-            disabledContentColor = TapMuted
-        )
+        modifier = modifier.height(78.dp),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, TapBorder),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = TapPanel,
+            contentColor = Color.White
+        ),
+        contentPadding = PaddingValues(6.dp)
     ) {
-        Text(
-            text = text,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold
-        )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = TapAccent, modifier = Modifier.size(26.dp))
+            Spacer(Modifier.height(4.dp))
+            Text(label, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        }
     }
 }
+

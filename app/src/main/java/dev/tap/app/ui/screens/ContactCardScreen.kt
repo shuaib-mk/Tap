@@ -105,11 +105,15 @@ fun ContactCardScreen(viewModel: TransferViewModel) {
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .navigationBarsPadding()
-                .padding(horizontal = 20.dp)
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
             // Header
             Row(
                 modifier = Modifier
@@ -309,6 +313,12 @@ fun ContactCardScreen(viewModel: TransferViewModel) {
             )
 
             Spacer(Modifier.height(30.dp))
+            }
+
+            MetroBottomBar(
+                currentScreen = TapScreen.ContactCard,
+                onNavigate = { viewModel.navigateTo(it) }
+            )
         }
     }
 }

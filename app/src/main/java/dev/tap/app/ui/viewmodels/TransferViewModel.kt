@@ -66,6 +66,56 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     val currentSasCode = proximityEngine.currentSasCode
     val proximityWebFallbackUrl = proximityEngine.webFallbackUrl
 
+    // WebRTC Anywhere Engine (v1.4.0)
+    val anywhereEngine = dev.tap.app.webrtc.AnywhereTransferEngine(application, viewModelScope)
+    val anywhereState = anywhereEngine.engineState
+    val anywhereProgress = anywhereEngine.progress
+    val stagedAnywhereFiles = anywhereEngine.stagedFiles
+    val isInternetAvailable: Boolean get() = anywhereEngine.isInternetAvailable
+
+    fun stageAnywhereUris(uris: List<Uri>) {
+        anywhereEngine.stageUris(uris)
+        proximityEngine.stageUris(uris)
+    }
+
+    fun removeStagedAnywhereFile(file: dev.tap.app.proximity.ProximityFile) {
+        anywhereEngine.removeStagedFile(file)
+        proximityEngine.removeStagedFile(file)
+    }
+
+    fun clearStagedAnywhereFiles() {
+        anywhereEngine.clearStagedFiles()
+        proximityEngine.clearStagedFiles()
+    }
+
+    fun startAnywhereShare() {
+        anywhereEngine.startAnywhereShare()
+    }
+
+    fun joinAnywhereShare(codeOrId: String) {
+        anywhereEngine.joinAnywhereShare(codeOrId)
+    }
+
+    fun respondToTransferConsent(accepted: Boolean) {
+        anywhereEngine.respondToTransferConsent(accepted)
+    }
+
+    fun pauseTransfer() {
+        anywhereEngine.pauseTransfer()
+    }
+
+    fun resumeTransfer() {
+        anywhereEngine.resumeTransfer()
+    }
+
+    fun cancelAnywhereTransfer() {
+        anywhereEngine.cancelActiveTransfer()
+    }
+
+    fun startOfflineNearbyShare() {
+        anywhereEngine.startOfflineNearbyShare()
+    }
+
     fun stageProximityUris(uris: List<Uri>) {
         proximityEngine.stageUris(uris)
     }

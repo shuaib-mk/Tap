@@ -1,13 +1,16 @@
 package dev.tap.app.ui.screens
 
-import android.content.Intent
-import android.net.Uri
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,74 +27,72 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.tap.app.history.data.TransferRecord
 import dev.tap.app.navigation.TapScreen
-import dev.tap.app.transfer.SelectedFile
+import dev.tap.app.protocol.TransferDirection
 import dev.tap.app.ui.components.*
 import dev.tap.app.ui.viewmodels.TransferViewModel
+import dev.tap.app.webrtc.AnywhereEngineState
 
 @Composable
 fun HomeScreen(viewModel: TransferViewModel) {
     val context = LocalContext.current
-    val mode by viewModel.mode.collectAsState()
-    val selectedFiles by viewModel.selectedFiles.collectAsState()
-    val caps by viewModel.capabilities.collectAsState()
-    val contactCard by viewModel.contactCard.collectAsState()
+    val anywhereState by viewModel.anywhereState.collectAsState()
+    val progress by viewModel.anywhereProgress.collectAsState()
+    val isInternet = viewModel.isInternetAvailable
+    val historyRecords by viewModel.historyRepo.records.collectAsState()
 
-    // Activity Result Launchers for file picking
-    val photoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetMultipleContents()
-    ) { uris: List<Uri> ->
-        if (uris.isNotEmpty()) {
-            viewModel.addFiles(uris)
-            viewModel.navigateTo(TapScreen.Send)
-        }
-    }
+    var showReceiveDialog by remember { mutableStateOf(false) }
+    var receiveCodeInput by remember { mutableStateOf("") }
 
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris: List<Uri> ->
-        if (uris.isNotEmpty()) {
-            viewModel.addFiles(uris)
-            viewModel.navigateTo(TapScreen.Send)
-        }
-    }
-
-    var showLinkDialog by remember { mutableStateOf(false) }
-    var linkUrl by remember { mutableStateOf("") }
-
-    if (showLinkDialog) {
+    // Dialog for entering a 6-character remote pairing code
+    if (showReceiveDialog) {
         AlertDialog(
-            onDismissRequest = { showLinkDialog = false },
-            title = { Text("Share Link", color = Color.White) },
+            onDismissRequest = { showReceiveDialog = false },
+            title = { Text("Receive Files", color = Color.White, fontWeight = FontWeight.Bold) },
             text = {
-                OutlinedTextField(
-                    value = linkUrl,
-                    onValueChange = { linkUrl = it },
-                    placeholder = { Text("https://example.com", color = TapMuted) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = TapAccent,
-                        unfocusedBorderColor = TapBorder
-                    ),
-                    singleLine = true
-                )
+                Column {
+                    Text(
+                        "Enter the 6-character pairing code displayed on the sender's phone:",
+                        color = TapMuted,
+                        fontSize = 13.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = receiveCodeInput,
+                        onValueChange = { receiveCodeInput = it.uppercase() },
+                        placeholder = { Text("e.g. TAP-4829", color = TapMuted) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = TapAccent,
+                            unfocusedBorderColor = TapBorder
+                        ),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        if (linkUrl.isNotBlank()) {
-                            viewModel.addLink(linkUrl)
-                            showLinkDialog = false
-                            linkUrl = ""
-                            viewModel.navigateTo(TapScreen.Send)
+                        if (receiveCodeInput.isNotBlank()) {
+                            showReceiveDialog = false
+                            val code = receiveCodeInput.trim()
+                            viewModel.joinAnywhereShare(code)
+                            viewModel.navigateTo(TapScreen.TransferProgress)
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = TapAccent, contentColor = TapInk)
-                ) { Text("Add Link") }
+                    colors = ButtonDefaults.buttonColors(containerColor = TapAccent, contentColor = TapInk),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Connect", fontWeight = FontWeight.Bold)
+                }
             },
             dismissButton = {
-                TextButton(onClick = { showLinkDialog = false }) { Text("Cancel", color = TapMuted) }
+                TextButton(onClick = { showReceiveDialog = false }) {
+                    Text("Cancel", color = TapMuted)
+                }
             },
             containerColor = TapPanel
         )
@@ -102,329 +103,343 @@ fun HomeScreen(viewModel: TransferViewModel) {
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .navigationBarsPadding()
-                .padding(horizontal = 20.dp)
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Header
-            Row(
+            // Main Scrollable Body
+            Column(
                 modifier = Modifier
+                    .weight(1f)
                     .fillMaxWidth()
-                    .padding(top = 16.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(horizontal = 20.dp)
+                    .verticalScroll(rememberScrollState())
             ) {
-                Text(
-                    "TAP",
-                    color = Color.White,
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 3.sp
-                )
-                Spacer(Modifier.width(10.dp))
-                Box(
+                // Header: Minimal TAP + Status Indicator + Actions
+                Row(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(TapAccent.copy(alpha = 0.2f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text("UNIVERSAL", color = TapAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
-
-                Spacer(Modifier.weight(1f))
-
-                IconButton(onClick = { viewModel.navigateTo(TapScreen.CompatibilityDiagnostics) }) {
-                    Icon(Icons.Rounded.Analytics, contentDescription = "Diagnostics", tint = TapMuted)
-                }
-                IconButton(onClick = { viewModel.navigateTo(TapScreen.History) }) {
-                    Icon(Icons.Rounded.History, contentDescription = "History", tint = TapMuted)
-                }
-                IconButton(onClick = { viewModel.navigateTo(TapScreen.Settings) }) {
-                    Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = TapMuted)
-                }
-            }
-
-            // Universal Status Pills
-            val isBgTapSharing by viewModel.isBackgroundTapSharing.collectAsState()
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                StatusChip("Tap Sharing: ${if (isBgTapSharing) "Always Ready" else "Off"}", isBgTapSharing)
-                StatusChip("NFC: ${if (caps.nfcEnabled) "Ready" else "Off"}", caps.nfcEnabled)
-                Spacer(Modifier.weight(1f))
-                TextButton(
-                    onClick = { viewModel.navigateTo(TapScreen.NfcReadiness) },
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Text("Modes", color = TapAccent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                }
-            }
-
-            // Pulsing NFC circle
-            PulsingNfcCircle(
-                active = mode == "Receive",
-                onClick = {
-                    if (mode == "Receive") {
-                        viewModel.navigateTo(TapScreen.Receive)
-                    } else if (selectedFiles.isNotEmpty()) {
-                        viewModel.navigateTo(TapScreen.NearbyDevices)
-                    } else {
-                        photoPickerLauncher.launch("image/*")
-                    }
-                }
-            )
-
-            Spacer(Modifier.height(18.dp))
-
-            Text(
-                text = if (mode == "Receive") "Bring devices together." else "Ready to share.",
-                color = Color.White,
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = if (mode == "Receive") {
-                    "Listening for nearby NFC, BLE, QR or Local Web clients"
-                } else if (selectedFiles.isNotEmpty()) {
-                    "${selectedFiles.size} file(s) selected (${SelectedFile.formatBytes(viewModel.totalSelectedSize)})"
-                } else {
-                    "Tap to send files, or tap Contact Card below"
-                },
-                color = TapMuted,
-                fontSize = 14.sp
-            )
-
-            Spacer(Modifier.height(18.dp))
-
-            // Send / Receive Toggle Bar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(TapPanel)
-                    .padding(5.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                listOf("Send", "Receive").forEach { item ->
-                    val active = mode == item
-                    Button(
-                        onClick = { viewModel.setMode(item) },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (active) TapAccent else TapPanel,
-                            contentColor = if (active) TapInk else TapMuted
-                        )
-                    ) {
-                        Text(item, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            // PRIORITY HERO BANNER: Universal Digital Contact Card
-            Surface(
-                onClick = { viewModel.navigateTo(TapScreen.ContactCard) },
-                shape = RoundedCornerShape(18.dp),
-                color = TapPanel,
-                border = androidx.compose.foundation.BorderStroke(1.2.dp, TapAccent.copy(alpha = 0.6f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
+                        .fillMaxWidth()
+                        .padding(top = 16.dp, bottom = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(46.dp)
-                            .clip(CircleShape)
-                            .background(TapAccent),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Rounded.ContactPhone, contentDescription = null, tint = TapInk, modifier = Modifier.size(24.dp))
-                    }
-                    Spacer(Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "Digital Contact Card",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(TapAccent.copy(alpha = 0.2f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text("NO APP REQUIRED", color = TapAccent, fontSize = 9.sp, fontWeight = FontWeight.Black)
-                            }
-                        }
-                        Spacer(Modifier.height(3.dp))
                         Text(
-                            "Share ${contactCard.displayName.ifBlank { "Contact" }} via NFC Tag, QR or Web",
-                            color = TapMuted,
-                            fontSize = 12.sp
-                        )
-                    }
-                    Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = TapAccent)
-                }
-            }
-
-            Spacer(Modifier.height(14.dp))
-
-            // NEW FEATURE: Proximity File Sharing (Samsung Quick Share & Tap to Share)
-            Surface(
-                onClick = { viewModel.navigateTo(TapScreen.ProximityShare) },
-                shape = RoundedCornerShape(18.dp),
-                color = TapPanel,
-                border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFF38BDF8).copy(alpha = 0.6f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(46.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF0284C7)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Rounded.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
-                    }
-                    Spacer(Modifier.width(14.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "Proximity File Sharing",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(Color(0xFF38BDF8).copy(alpha = 0.2f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text("NEW", color = Color(0xFF38BDF8), fontSize = 9.sp, fontWeight = FontWeight.Black)
-                            }
-                        }
-                        Spacer(Modifier.height(3.dp))
-                        Text(
-                            "Share photos, videos & files with nearby compatible devices",
-                            color = TapMuted,
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            text = "TAP",
+                            color = Color.White,
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = (-1).sp
                         )
                         Spacer(Modifier.height(4.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        StatusChip(
+                            label = if (isInternet) "Anywhere Ready (WebRTC)" else "Offline Ready (Wi-Fi Direct)",
+                            active = isInternet,
+                            accentColor = if (isInternet) TapAccent else Color(0xFFFBBF24)
+                        )
+                    }
+
+                    // Top Action Icons
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { viewModel.navigateTo(TapScreen.QrScanner) },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(TapPanel)
+                        ) {
+                            Icon(Icons.Rounded.QrCodeScanner, contentDescription = "Scan QR", tint = Color.White, modifier = Modifier.size(18.dp))
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        IconButton(
+                            onClick = { viewModel.navigateTo(TapScreen.Settings) },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(TapPanel)
+                        ) {
+                            Icon(Icons.Rounded.Tune, contentDescription = "Settings", tint = Color.White, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // Hero Primary Action Tiles: Share & Receive
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // 1. Share Action Card
+                    Surface(
+                        color = TapAccent,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(130.dp)
+                            .clickable { viewModel.navigateTo(TapScreen.FilePicker) }
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.SpaceBetween
+                        ) {
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(Color.White.copy(alpha = 0.08f))
-                                    .padding(horizontal = 5.dp, vertical = 1.dp)
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(TapInk),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Text("Tap to Share", color = TapMuted, fontSize = 9.sp, fontWeight = FontWeight.Medium)
+                                Icon(Icons.Rounded.ArrowUpward, contentDescription = null, tint = TapAccent, modifier = Modifier.size(20.dp))
                             }
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(Color.White.copy(alpha = 0.08f))
-                                    .padding(horizontal = 5.dp, vertical = 1.dp)
-                            ) {
-                                Text("Quick Share Ready", color = Color(0xFF38BDF8), fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+                            Column {
+                                Text("Share", color = TapInk, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
+                                Text("Send anywhere", color = TapInk.copy(alpha = 0.7f), fontSize = 12.sp)
                             }
                         }
                     }
-                    Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = Color(0xFF38BDF8))
+
+                    // 2. Receive Action Card
+                    Surface(
+                        color = TapPanel,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(130.dp)
+                            .clickable { showReceiveDialog = true }
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(TapPanelLight),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Rounded.ArrowDownward, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                            }
+                            Column {
+                                Text("Receive", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
+                                Text("Enter code or tap", color = TapMuted, fontSize = 12.sp)
+                            }
+                        }
+                    }
                 }
+
+                Spacer(Modifier.height(16.dp))
+
+                // Active Transfer Banner (when session created or transferring)
+                when (val state = anywhereState) {
+                    is AnywhereEngineState.WaitingForPeer -> {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = TapPanel,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("READY TO TRANSFER", color = TapAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                                    IconButton(
+                                        onClick = { viewModel.cancelAnywhereTransfer() },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(Icons.Rounded.Close, contentDescription = "Cancel", tint = TapMuted, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    text = state.sessionCode,
+                                    color = Color.White,
+                                    fontSize = 28.sp,
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 2.sp
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "Tell receiver to enter this code, or bring phones together to tap.",
+                                    color = TapMuted,
+                                    fontSize = 12.sp
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        onClick = {
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            clipboard.setPrimaryClip(ClipData.newPlainText("Share Link", state.shareLink))
+                                            Toast.makeText(context, "Link copied to clipboard", Toast.LENGTH_SHORT).show()
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = TapPanelLight, contentColor = Color.White),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(Icons.Rounded.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Copy Link", fontSize = 12.sp)
+                                    }
+
+                                    Button(
+                                        onClick = { viewModel.navigateTo(TapScreen.TransferProgress) },
+                                        colors = ButtonDefaults.buttonColors(containerColor = TapAccent, contentColor = TapInk),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text("View Status", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                    }
+
+                    is AnywhereEngineState.Transferring -> {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = TapPanel,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.navigateTo(TapScreen.TransferProgress) }
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("TRANSFER IN PROGRESS", color = TapAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                                    Text(progress.formattedSpeed, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text(progress.currentFileName, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                                Spacer(Modifier.height(8.dp))
+                                LinearProgressIndicator(
+                                    progress = { progress.percent },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(2.dp)),
+                                    color = TapAccent,
+                                    trackColor = TapPanelLight
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                    }
+                    else -> {}
+                }
+
+                // Physical Proximity Notice
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = TapPanel,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { viewModel.navigateTo(TapScreen.ProximityShare) }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(TapPanelLight),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Rounded.Nfc, contentDescription = null, tint = TapAccent, modifier = Modifier.size(18.dp))
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Physical Tap to Share", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text("Always ready • Touch phones back-to-back", color = TapMuted, fontSize = 11.sp)
+                        }
+                        Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = TapMuted, modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                Spacer(Modifier.height(20.dp))
+
+                // Recent Activity Section
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Recent Activity",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.3).sp
+                    )
+                    TextButton(onClick = { viewModel.navigateTo(TapScreen.History) }) {
+                        Text("See all", color = TapAccent, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+
+                if (historyRecords.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("No recent transfers yet", color = TapMuted, fontSize = 13.sp)
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        for (record in historyRecords.take(3)) {
+                            val isSender = record.direction == TransferDirection.SENT
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = TapPanel,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isSender) TapAccent.copy(alpha = 0.15f) else TapPanelLight),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            if (isSender) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward,
+                                            contentDescription = null,
+                                            tint = if (isSender) TapAccent else Color.White,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(record.fileName, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                                        Text("${formatFileSize(record.fileSize)} • ${if (isSender) "Sent to " else "From "}${record.peerName}", color = TapMuted, fontSize = 11.sp)
+                                    }
+                                    Text("✓", color = TapGreen, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(24.dp))
             }
 
-            Spacer(Modifier.height(16.dp))
-
-            // Action Tiles for File Picking
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                ActionTile(
-                    label = "Photos",
-                    icon = Icons.Rounded.Image,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    photoPickerLauncher.launch("image/*")
-                }
-                ActionTile(
-                    label = "Files",
-                    icon = Icons.Rounded.FolderOpen,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    filePickerLauncher.launch(arrayOf("*/*"))
-                }
-                ActionTile(
-                    label = "Links",
-                    icon = Icons.Rounded.Link,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    showLinkDialog = true
-                }
-                ActionTile(
-                    label = "Scan QR",
-                    icon = Icons.Rounded.QrCodeScanner,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    viewModel.navigateTo(TapScreen.QrScanner)
-                }
-            }
-
-            if (selectedFiles.isNotEmpty()) {
-                Spacer(Modifier.height(14.dp))
-                TapButton(
-                    text = "Review & Send ${selectedFiles.size} File(s)",
-                    onClick = { viewModel.navigateTo(TapScreen.Send) },
-                    isPrimary = true
-                )
-            }
-
-            Spacer(Modifier.height(20.dp))
-
-            // Footer Badges
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(bottom = 16.dp)
-            ) {
-                Icon(
-                    Icons.Rounded.QrCode2,
-                    contentDescription = null,
-                    tint = TapMuted,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(Modifier.width(6.dp))
-                TextButton(onClick = { viewModel.navigateTo(TapScreen.Receive) }) {
-                    Text("Receive Screen", color = TapMuted, fontSize = 13.sp)
-                }
-                Spacer(Modifier.width(12.dp))
-                Icon(
-                    Icons.Rounded.Lock,
-                    contentDescription = null,
-                    tint = TapAccent,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(Modifier.width(6.dp))
-                Text("E2E Encrypted", color = TapMuted, fontSize = 13.sp)
-            }
+            // Bottom Navigation Bar
+            MetroBottomBar(
+                currentScreen = TapScreen.Home,
+                onNavigate = { screen -> viewModel.navigateTo(screen) }
+            )
         }
     }
 }

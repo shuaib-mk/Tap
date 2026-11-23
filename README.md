@@ -1,10 +1,10 @@
-# TAP UNIVERSAL (v1.3.0) — Physical Tap to Share, Zero-Install Web Fallback & Cross-Device Proximity Platform
+# TAP UNIVERSAL (v1.4.0) — Anywhere Transfer, MetroList Minimalist Design & Cross-Device Proximity Platform
 
-TAP is a minimal, fast, privacy-focused proximity-sharing platform built for Android (specifically optimized and tested for the **Samsung Galaxy A54 5G** running One UI 6 / 7, Android 14/15, and backward-compatible down to Android 8.0 / API 26).
+TAP is a minimal, fast, privacy-focused proximity and remote file sharing platform built for Android (specifically optimized and tested for the **Samsung Galaxy A54 5G** running One UI 6 / 7, Android 14/15, and backward-compatible down to Android 8.0 / API 26).
 
-**Zero accounts. Zero cloud servers. Zero tracking. Universal compatibility.**
+**Zero accounts. Zero cloud file storage. Zero tracking. Universal compatibility.**
 
-The receiver does **not** need TAP installed to receive contacts, photos, or files.
+The receiver does **not** need to be on the same Wi-Fi network, and for web sharing does **not** need TAP installed to receive contacts, photos, or files.
 
 ---
 
@@ -12,92 +12,91 @@ The receiver does **not** need TAP installed to receive contacts, photos, or fil
 
 - **Application Name**: TAP
 - **Application ID**: `dev.tap.app`
-- **Version**: `1.3.0` (VersionCode: `5`)
+- **Version**: `1.4.0` (VersionCode: `6`)
 - **Min SDK**: API 26 (Android 8.0 Oreo)
 - **Compile SDK**: API 36 (Android 15+)
 - **Target SDK**: API 36
 - **Debug APK Location**: `app/build/outputs/apk/debug/app-debug.apk`
 - **Release APK Location**: `app/build/outputs/apk/release/app-release-unsigned.apk`
+- **COTURN Deployment Guide**: [`COTURN_DEPLOYMENT.md`](COTURN_DEPLOYMENT.md)
 - **GitHub Repository**: [https://github.com/shuaib-mk/Tap](https://github.com/shuaib-mk/Tap)
 
 ---
 
-## 2. NEW in v1.3.0: Physical Tap to Share & Zero-Install Web Fallback
+## 2. NEW in v1.4.0: True Anywhere File Transfer & MetroList UI Redesign
 
-TAP v1.3.0 delivers the full **Physical Tap to Share** system following the architectural feasibility report:
+TAP v1.4.0 eliminates the local Wi-Fi / same-hotspot restriction and introduces a minimalist, typography-led user interface:
 
-### 1. TAP-to-TAP Physical Proximity Sharing (Primary Feature)
-- **Physical Tap Initiation**: Sender stages files and activates "Physical Tap to Share". Phone enters discoverable NFC Host Card Emulation (HCE) state emulating an NFC Forum Type 4 Tag.
-- **RF Poll Contention Prevention**: The Sender operates as a **Passive HCE Listener** (Reader Mode disabled). The Receiver operates as the **Poller/Reader**. This completely prevents RF carrier collision between two NFC phones.
-- **Automated P2P Connection**: Bringing the devices together physically triggers the NFC tap, exchanging ephemeral cryptographic session info via Type 4 HCE. No manual IP address entry is required.
-- **Short Authentication String (SAS)**: Ephemeral ECDH (`secp256r1`) agreement derives a deterministic 6-digit verification code (`calculateSasCode`) displayed on both screens (e.g. `482 193`). Public keys are lexicographically sorted to guarantee identical key derivation on both sides.
-- **Explicit Recipient Consent**: The receiver displays a prominent incoming transfer consent card with the sender's device name, file count, total size, and the matching 6-digit SAS code. Zero bytes are transferred until the recipient taps "Accept".
-- **Streaming AES-256-GCM Transfer**: Payloads are streamed in 256 KB encrypted chunks with strictly monotonic nonces (`chunkIndex` + direction byte + session entropy) over high-speed bidirectional TCP sockets (port 8990).
-- **Streaming SHA-256 Integrity Verification**: Payloads are verified on-the-fly against pre-computed SHA-256 digests and atomically committed to MediaStore / `Download/TAP`. Hash mismatches trigger immediate file destruction.
+### 1. True Anywhere File Transfer (Across Any Network)
+- **WebRTC DataChannels**: Peer-to-peer encrypted binary data streaming across different networks:
+  - Sender on Wi-Fi, receiver on mobile data (4G/5G).
+  - Sender on mobile data, receiver on Wi-Fi.
+  - Both devices on separate Wi-Fi networks.
+  - Both devices on separate cellular networks.
+- **STUN / TURN NAT Traversal**: Direct peer-to-peer connection whenever possible. Automatic fallback to COTURN relay servers for symmetric NATs and mobile carriers.
+- **Zero Cloud File Storage**: Signaling server and TURN relays only coordinate connection metadata and encrypted packets. Zero file bytes are ever stored on any server.
+- **Ephemeral Pairing Codes**: 6-character short codes (e.g. `TAP-4829`) and instant share links (`https://tap.dev/s/TAP-4829`) for remote pairing.
+- **Explicit Receiver Consent**: Incoming transfer requests show sender device name, file manifest, total size, and matching 6-digit SAS code. Transfers require explicit user approval.
+- **Resumable 64 KB Chunk Streaming**: Backpressure-managed chunk transport with monotonic nonces, pause/resume capability, and streaming SHA-256 verification.
+- **Offline Nearby Fallback**: Autonomous Wi-Fi Direct group creation (`WifiP2pManager`) enables transfers even when no cellular or internet connection is available.
 
-### 2. Zero-Install NFC Web Sharing (Fallback for Devices Without TAP)
-- **NDEF Multi-Record Dispatch**: The emulated Type 4 Tag serves a multi-record NDEF payload:
-  1. Record 1: Custom MIME `application/vnd.dev.tap.proximity` (for TAP-to-TAP bootstrap).
-  2. Record 2: NFC Forum URI `http://<IP>:8989/?token=<sessionToken>` (for zero-install web fallback).
-  3. Record 3: Android Application Record (AAR) `dev.tap.app`.
-- **Zero-Install Web Download**: If the recipient phone does not have TAP installed (or is an iPhone), the native NFC dispatcher detects Record 2 and prompts to open Safari / Chrome.
-- **Short-Lived Single-Session Security**: Embedded `LocalHttpServer` enforces the session token. Any unauthorized requests without the token are rejected with `HTTP/1.1 403 Forbidden`. The token is cleanly revoked when the session ends.
+### 2. Complete UI/UX Redesign (MetroList Aesthetic)
+- **Obsidian Slate & Muted Sage Palette**: High-contrast dark background (`#090A0E`), rich panel tiles (`#13151B`), and crisp lime/sage accents (`#A3E635`).
+- **Typography-Led Hierarchy**: Generous whitespace, clean headers, and concise status chips.
+- **MetroBottomBar**: 4 focused navigation destinations:
+  1. **Share (`HomeScreen`)**: Send files, receive with short code, and view live transfer states.
+  2. **Activity (`HistoryScreen`)**: Transfer logs with Sent/Received filters and clear-all action.
+  3. **Identity (`ContactCardScreen`)**: Personal digital contact card with field privacy controls.
+  4. **Settings (`SettingsScreen`)**: Custom COTURN server setup, signaling preferences, and hardware diagnostics.
 
 ### 3. Preserved Features (100% Intact & Verified)
-- **Digital Contact Card**: RFC 2426 / 6350 vCard generation with granular field privacy toggles.
-- **Always-Ready Background NFC HCE**: Tapping the Galaxy A54 while locked or on the home screen shares the contact card directly.
-- **Physical NFC Tag Writer**: Encodes external physical NFC cards (NTAG213, NTAG215, NTAG216, Mifare).
-- **QR Scanner & Viewfinder**: Scans peer TAP sessions or contact QR codes with manual JSON fallback.
-- **Samsung Quick Share Handoff**: Preserved optional 1-tap delegation to `com.samsung.android.app.sharelive/.ShareActivity`.
-- **Payment Coexistence**: Uses ISO 7816-4 AID category `other`, ensuring zero conflict with Google Wallet / Samsung Pay.
+- **Physical Tap to Share**: Passive HCE Type 4 NFC tag emulation for instant physical phone-to-phone pairing.
+- **Zero-Install Web Fallback**: NDEF URI multi-record dispatch allows non-TAP devices (e.g. iPhones) to download shared files in browser.
+- **Digital Contact Card**: RFC 2426/6350 vCard generation with field privacy controls.
+- **Physical NFC Card Writer**: Encodes external physical NFC cards (NTAG213, NTAG215, NTAG216, Mifare).
+- **Universal QR Code**: Scannable with any native iOS or Android camera app.
+- **Samsung Quick Share Handoff**: Optional 1-tap delegation to Samsung's native Quick Share activity.
 
 ---
 
-## 3. Product Screens & Architecture
+## 3. Product Screens & Navigation
 
-TAP features a unified Dark Charcoal (`#090B10`) and Soft Lime (`#B7F36B`) design across 15 interactive screens:
-
-1. **Home (`HomeScreen`)**: Central hub with Universal Mode status pills, pulsing NFC ring, Send/Receive toggle, Digital Contact Card banner, and Proximity File Sharing card.
-2. **Send (`FilePickerScreen`)**: Multi-content selector for Photos, Videos, Documents, Arbitrary Files, Links, and Contacts.
-3. **Receive (`QrConnectScreen`)**: Dual-mode receiver interface supporting TAP encrypted sessions and Local Web Browser Sharing with live URL and QR code.
-4. **Nearby Devices (`DiscoveryScreen`)**: High-contrast radar animation discovering local BLE beacons and Wi-Fi Direct peers.
-5. **NFC Readiness (`NfcReadinessScreen`)**: Real-time mode selector and hardware checklist across Mode A, Mode B, and Mode C.
-6. **Contact Card (`ContactCardScreen`)**: Personal digital identity card preview, field privacy toggles, and instant sharing action buttons.
-7. **NFC Card Writer (`NfcCardWriterScreen`)**: Live NFC tag encoder with tag capacity checking, writing progress, and success feedback.
-8. **QR Scanner (`QrScannerScreen`)**: Viewfinder to scan peer TAP sessions or vCard contact QR codes.
-9. **Receiver Approval (`ReceiverApprovalScreen`)**: Explicit security gate displaying sender name, manifest, total size, and Accept/Reject actions.
-10. **Transfer Progress (`TransferProgressScreen`)**: Real-time progress bar, throughput in MB/s, ETA counter, and cancel button.
-11. **Transfer Complete (`TransferCompleteScreen`)**: Success checkmark, SHA-256 integrity verification badge, and direct file launcher.
-12. **Transfer History (`HistoryScreen`)**: Reactive SQLite transfer log with Sent/Received filters and file sizes.
-13. **Settings (`SettingsScreen`)**: Device name, default ports, storage directories, and privacy overview.
-14. **Compatibility Diagnostics (`CompatibilityDiagnosticsScreen`)**: Runtime hardware audit of NFC, HCE, BLE, Wi-Fi, Camera, One UI, and native sharing.
-15. **Proximity File Sharing (`ProximityShareScreen`)**: Dedicated Physical Tap to Share hub with pulsing NFC radar, 6-digit SAS verification code dialog, live progress indicator, and Samsung Quick Share handoff.
+1. **Share (`HomeScreen`)**: Central transfer hub with Anywhere Transfer launcher, 6-character pairing code input, and recent activity preview.
+2. **Select Content (`FilePickerScreen`)**: Content staged selector with per-file size preview and one-tap removal.
+3. **Transfer Progress (`TransferProgressScreen`)**: Displays real-time progress, speed (MB/s), transport type indicator (`DIRECT P2P` vs `TURN RELAY`), pause/resume, and cancel controls.
+4. **Receiver Approval (`ReceiverApprovalScreen`)**: Consent screen showing sender name, file list, total size, and SAS code.
+5. **Activity (`HistoryScreen`)**: Transfer log with Sent/Received filtering and SQLite persistence.
+6. **Digital Contact Card (`ContactCardScreen`)**: Contact preview, field privacy switches, QR code generator, and physical tag writer trigger.
+7. **NFC Card Writer (`NfcCardWriterScreen`)**: Physical tag writer with live capacity audit and write progress.
+8. **Settings (`SettingsScreen`)**: COTURN relay configuration, signaling URL settings, and device identity.
+9. **Compatibility Diagnostics (`CompatibilityDiagnosticsScreen`)**: Hardware diagnostics auditing NFC, HCE, BLE, Wi-Fi Direct, and Camera.
 
 ---
 
-## 4. Hardware Compatibility Matrix
+## 4. Hardware & Network Compatibility Matrix
 
-| Recipient Device | Protocol / Mode | Result | Recipient App Required? |
+| Recipient Device & Network | Connection Method | Result | Recipient App Required? |
 | :--- | :--- | :---: | :---: |
-| **Android Phone with TAP** | Physical Tap to Share (NFC + TCP) | **Instant Transfer with SAS** | Yes (TAP) |
-| **Android Phone without TAP** | Zero-Install Web Fallback (NFC URI) | **Direct Browser Download** | **NO** |
-| **Android Phone without TAP** | Background NFC Contact vCard | **Native "Add to Contacts"** | **NO** |
-| **Apple iPhone (XS - 16)** | Zero-Install Web Fallback (NFC URI) | **Direct Safari Download** | **NO** |
-| **Apple iPhone (XS - 16)** | Physical NFC Tag Written by TAP | **Native iOS Contact Banner** | **NO** |
-| **Apple iPhone (XS - 16)** | Universal QR Contact Card | **Native iOS Camera Scan** | **NO** |
-| **Desktop / Laptop (Win/Mac/Linux)** | Local Web Browser Sharing | **Direct Browser Download** | **NO** |
-| **Samsung Galaxy (One UI 6.x - 9.5)** | Samsung Quick Share Handoff | **Native Quick Share Transfer** | **NO** (Quick Share) |
+| **Android (Different Wi-Fi / Mobile Data)** | WebRTC Anywhere (STUN/TURN) | **Encrypted Remote Transfer** | Yes (TAP) |
+| **Android (Same Wi-Fi / Hotspot)** | Physical Tap to Share (NFC + TCP) | **Instant Transfer with SAS** | Yes (TAP) |
+| **Android (Offline, No Internet)** | Autonomous Wi-Fi Direct | **Offline High-Speed Transfer** | Yes (TAP) |
+| **Android without TAP (Same Wi-Fi)** | Zero-Install Web Fallback (NFC URI) | **Direct Browser Download** | **NO** |
+| **Android without TAP** | Background NFC Contact vCard | **Native "Add to Contacts"** | **NO** |
+| **Apple iPhone (Different Network)** | Universal Contact QR / Web Link | **Direct Browser Download** | **NO** |
+| **Apple iPhone (Physical NFC Tag)** | Tag Written by TAP NFC Writer | **Native iOS Contact Banner** | **NO** |
+| **Desktop / Laptop (Any Network)** | Web Link / Local Browser Share | **Direct Browser Download** | **NO** |
+| **Samsung Galaxy (One UI 6 - 9.5)** | Quick Share System Handoff | **Native Quick Share Transfer** | **NO** (Quick Share) |
 
 ---
 
 ## 5. Security & Cryptographic Specifications
 
-1. **Key Agreement**: Ephemeral Elliptic Curve Diffie-Hellman (ECDH) over curve `secp256r1`.
-2. **Symmetric Key Derivation**: HKDF-SHA256 (`HMAC-SHA256` extract-and-expand) binding session key to `sessionId`, `senderDeviceId`, `receiverDeviceId`, and lexicographically ordered public keys (`$lowerPub:$higherPub`).
-3. **Short Authentication String (SAS)**: 6-digit human-verifiable authentication code computed from HKDF info string with lexicographically sorted public keys to eliminate Man-in-the-Middle (MITM) risks.
-4. **Transport Encryption**: AES-256-GCM with 96-bit monotonically incrementing IV per 256 KB chunk and 128-bit authentication tag.
-5. **Data Integrity**: Streaming SHA-256 digest calculated over unencrypted input streams and verified byte-for-byte by the receiver before atomic filesystem commit.
-6. **Zero-Install Web Security**: Embedded HTTP server enforces short-lived single-session random tokens. Requests lacking the token return `HTTP/1.1 403 Forbidden`.
+1. **End-to-End Encryption**: AES-256-GCM encryption with 96-bit monotonic nonces across all WebRTC DataChannel chunks.
+2. **Ephemeral Key Exchange**: Ephemeral ECDH over curve `secp256r1`. Session keys are never reused or persisted.
+3. **Short Authentication String (SAS)**: Deterministic 6-digit verification code derived from lexicographically sorted public keys, eliminating Man-in-the-Middle (MITM) risks.
+4. **Streaming SHA-256 Verification**: Pre-computed SHA-256 checksums are validated on-the-fly chunk-by-chunk by the receiver. Corrupt or modified files are immediately destroyed before filesystem commitment.
+5. **Zero Server Storage**: Signaling servers and COTURN relays never receive unencrypted file data, and file payloads are never written to server disk.
+6. **COTURN Authentication**: Standard TURN REST API dynamic credential derivation (`<timestamp>:<user>` + HMAC-SHA1 signature) prevents credential exposure.
 
 ---
 
@@ -107,7 +106,8 @@ TAP features a unified Dark Charcoal (`#090B10`) and Soft Lime (`#B7F36B`) desig
 ```powershell
 .\gradlew.bat testDebugUnitTest
 ```
-**Results**: 38 tests executed, **0 failures, 0 errors** across:
+**Results**: **45 unit tests executed, 0 failures, 0 errors (100% pass rate)**:
+- `WebRtcAnywhereTest`: 6 tests (Signaling payload serialization, session code formatting, manifest encoding, TURN ephemeral credential derivation, chunk frame header encoding/decoding, streaming SHA-256).
 - `ProximitySharingTest`: 12 tests (ECDH, SAS matching, MITM resistance, AES-GCM chunking, handshake state machine, SHA-256 integrity, NDEF repository, offer/response round-trip).
 - `TapHostApduServiceTest`: 8 tests (ISO 7816-4 APDUs, Select AID, CC file, NDEF file read, proximity payload injection).
 - `CapabilitiesTest`: 3 tests (Hardware capability detection).
@@ -124,35 +124,23 @@ TAP features a unified Dark Charcoal (`#090B10`) and Soft Lime (`#B7F36B`) desig
 # Build Unsigned Release APK
 .\gradlew.bat assembleRelease
 ```
-- **Debug APK**: `app/build/outputs/apk/debug/app-debug.apk`
-- **Release APK**: `app/build/outputs/apk/release/app-release-unsigned.apk`
+- **Debug APK**: `app/build/outputs/apk/debug/app-debug.apk` (~63.8 MB)
+- **Release APK**: `app/build/outputs/apk/release/app-release-unsigned.apk` (~56.8 MB)
 
 ---
 
-## 7. Two-Device Physical Testing Guide
+## 7. Testing Anywhere File Transfer
 
-### Test 1: TAP-to-TAP Physical Tap to Share (Phone A -> Phone B)
-1. Install `app-debug.apk` on Phone A (Samsung Galaxy A54) and Phone B.
-2. Connect both phones to the same Wi-Fi or turn on Portable Hotspot on Phone A and connect Phone B.
-3. **On Phone A (Sender)**:
-   - Open TAP → Tap **Proximity File Sharing**.
-   - Tap **"Media"** or **"Files"** and select files.
-   - Tap **"Physical Tap to Share"**.
-   - The card pulses with *"Ready to Tap! Hold backs of phones together to transfer"*.
-4. **On Phone B (Receiver)**:
-   - Unlock Phone B and touch its back against Phone A.
-5. **Approval & SAS Verification**:
-   - Phone B's screen automatically displays the **Incoming Proximity Transfer** card with Phone A's name, file count, and a prominent 6-digit code (e.g. `482 193`).
-   - Confirm the exact same 6-digit code appears on Phone A.
-   - Tap **"Accept"** on Phone B.
-6. **High-Speed Transfer & Integrity Check**:
-   - Both devices display the live progress bar and transfer speed (MB/s).
-   - Once all chunks are received and decrypted, Phone B verifies the SHA-256 checksum.
-   - Green badge **"SHA-256 Verified ✓"** appears and the files are saved to `Download/TAP`.
-
-### Test 2: Zero-Install NFC Web Sharing (Phone A -> iPhone / Phone without TAP)
-1. On Phone A: Stage files and tap **"Physical Tap to Share"**.
-2. Touch the back of an iPhone (screen unlocked) to the back of Phone A.
-3. The iPhone native NFC banner appears: *"Website Tag: http://192.168...:8989/?token=..."*.
-4. Tap the notification on iPhone: Safari opens and displays the download buttons for each shared file.
-5. Tap **"Download"** to save the files directly in Safari without installing TAP.
+### Scenario A: Remote Transfer (Sender on 5G, Receiver on Home Wi-Fi)
+1. Install `app-debug.apk` on both devices.
+2. Ensure Phone A is connected to Mobile Data (Wi-Fi turned off).
+3. Ensure Phone B is connected to Home Wi-Fi.
+4. **On Phone A (Sender)**:
+   - Select files in TAP and tap **"Send Anywhere"**.
+   - Note the 6-character code (e.g. `TAP-4829`).
+5. **On Phone B (Receiver)**:
+   - Tap **"Receive"** on the home screen and enter `TAP-4829`.
+   - The **Incoming Transfer Request** dialog appears showing Phone A's device name, file count, total size, and 6-digit SAS code.
+   - Tap **"Accept"**.
+6. Files transfer directly via WebRTC DataChannel (or through COTURN relay if symmetric NAT prevents direct P2P).
+7. Receiver validates streaming SHA-256 checksum and saves files to `Download/TAP`.
