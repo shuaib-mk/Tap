@@ -22,6 +22,8 @@ import dev.tap.app.history.data.TransferRecord
 import dev.tap.app.navigation.TapScreen
 import dev.tap.app.protocol.TransferDirection
 import dev.tap.app.ui.components.*
+import dev.tap.app.ui.theme.AnthropicSerifDisplay
+import dev.tap.app.ui.theme.AnthropicSerifText
 import dev.tap.app.ui.viewmodels.TransferViewModel
 
 @Composable
@@ -112,6 +114,7 @@ fun HistoryScreen(viewModel: TransferViewModel) {
                             Box(contentAlignment = Alignment.Center) {
                                 Text(
                                     filter,
+                                    fontFamily = AnthropicSerifDisplay,
                                     color = if (isSelected) TapInk else TapMuted,
                                     fontSize = 12.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
@@ -131,9 +134,9 @@ fun HistoryScreen(viewModel: TransferViewModel) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Rounded.ReceiptLong, contentDescription = null, tint = TapMuted, modifier = Modifier.size(48.dp))
                             Spacer(Modifier.height(12.dp))
-                            Text("No activity recorded yet", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                            Text("No activity recorded yet", fontFamily = AnthropicSerifDisplay, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(4.dp))
-                            Text("Completed transfers will appear here", color = TapMuted, fontSize = 12.sp)
+                            Text("Completed transfers will appear here", fontFamily = AnthropicSerifText, color = TapMuted, fontSize = 12.sp)
                         }
                     }
                 } else {
@@ -188,11 +191,12 @@ private fun ActivityRecordRow(record: TransferRecord, onDelete: () -> Unit) {
             }
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(record.fileName, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Text(record.fileName, fontFamily = AnthropicSerifText, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 Spacer(Modifier.height(2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         "${formatFileSize(record.fileSize)} • ${if (isSender) "Sent to " else "From "}${record.peerName}",
+                        fontFamily = AnthropicSerifText,
                         color = TapMuted,
                         fontSize = 11.sp
                     )

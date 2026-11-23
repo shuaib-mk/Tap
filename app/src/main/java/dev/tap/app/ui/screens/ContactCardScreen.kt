@@ -1,15 +1,18 @@
 package dev.tap.app.ui.screens
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,7 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -27,24 +30,28 @@ import dev.tap.app.contacts.ContactCard
 import dev.tap.app.discovery.qr.QrCodeGenerator
 import dev.tap.app.navigation.TapScreen
 import dev.tap.app.ui.components.*
+import dev.tap.app.ui.theme.AnthropicSerifDisplay
+import dev.tap.app.ui.theme.AnthropicSerifText
 import dev.tap.app.ui.viewmodels.TransferViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContactCardScreen(viewModel: TransferViewModel) {
     val card by viewModel.contactCard.collectAsState()
     val isHttpRunning by viewModel.isHttpServerRunning.collectAsState()
     val httpUrl by viewModel.httpServerUrl.collectAsState()
 
-    var showEditDialog by remember { mutableStateOf(false) }
+    var showEditSheet by remember { mutableStateOf(false) }
     var showQrDialog by remember { mutableStateOf(false) }
     var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
+    // QR Code Dialog
     if (showQrDialog) {
         Dialog(onDismissRequest = { showQrDialog = false }) {
             Surface(
                 shape = RoundedCornerShape(24.dp),
                 color = TapPanel,
-                border = androidx.compose.foundation.BorderStroke(1.dp, TapBorder),
+                border = BorderStroke(1.dp, TapBorder),
                 modifier = Modifier.padding(16.dp)
             ) {
                 Column(
@@ -52,16 +59,18 @@ fun ContactCardScreen(viewModel: TransferViewModel) {
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        "Universal Contact QR",
+                        "Contact QR",
+                        fontFamily = AnthropicSerifDisplay,
                         color = Color.White,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold
                     )
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(6.dp))
                     Text(
-                        "Scan with ANY iPhone or Android Camera app to add contact instantly (No app required).",
+                        "Scan with any camera app to import contact directly.",
+                        fontFamily = AnthropicSerifText,
                         color = TapMuted,
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                     Spacer(Modifier.height(20.dp))
@@ -80,7 +89,7 @@ fun ContactCardScreen(viewModel: TransferViewModel) {
 
                     Spacer(Modifier.height(20.dp))
                     TapButton(
-                        text = "Close",
+                        text = "Done",
                         onClick = { showQrDialog = false },
                         isPrimary = false
                     )
@@ -89,13 +98,14 @@ fun ContactCardScreen(viewModel: TransferViewModel) {
         }
     }
 
-    if (showEditDialog) {
-        EditContactDialog(
+    // Keyboard-safe BottomSheet Editor
+    if (showEditSheet) {
+        EditContactSheet(
             initialCard = card,
-            onDismiss = { showEditDialog = false },
+            onDismiss = { showEditSheet = false },
             onSave = { updated ->
                 viewModel.updateContactCard(updated)
-                showEditDialog = false
+                showEditSheet = false
             }
         )
     }
@@ -114,205 +124,235 @@ fun ContactCardScreen(viewModel: TransferViewModel) {
                     .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-            // Header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = { viewModel.navigateBack() }) {
-                    Icon(Icons.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White)
-                }
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "Digital Contact Card",
-                    color = Color.White,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.weight(1f))
-                IconButton(onClick = { showEditDialog = true }) {
-                    Icon(Icons.Rounded.Edit, contentDescription = "Edit Card", tint = TapAccent)
-                }
-            }
-
-            // Hero Contact Card Preview
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(TapPanel)
-                    .border(1.dp, TapBorder, RoundedCornerShape(24.dp))
-                    .padding(24.dp)
-            ) {
-                Column {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
+                // Header
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = { viewModel.navigateBack() },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(TapPanel)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(56.dp)
-                                .clip(CircleShape)
-                                .background(TapAccent),
-                            contentAlignment = Alignment.Center
+                        Icon(
+                            Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        "Identity",
+                        fontFamily = AnthropicSerifDisplay,
+                        color = Color.White,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.5).sp
+                    )
+                    Spacer(Modifier.weight(1f))
+                    IconButton(
+                        onClick = { showEditSheet = true },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(TapPanel)
+                    ) {
+                        Icon(Icons.Rounded.Edit, contentDescription = "Edit Card", tint = TapAccent, modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                // Hero Contact Card Preview
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(TapPanel)
+                        .border(1.dp, TapBorder, RoundedCornerShape(20.dp))
+                        .padding(20.dp)
+                ) {
+                    Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(
-                                text = card.displayName.take(2).uppercase().ifBlank { "TA" },
-                                color = TapInk,
-                                fontWeight = FontWeight.Black,
-                                fontSize = 22.sp
-                            )
-                        }
-                        Spacer(Modifier.width(16.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = card.displayName.ifBlank { "Tap User" },
-                                color = Color.White,
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            if (card.jobTitle.isNotBlank() || card.company.isNotBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .clip(CircleShape)
+                                    .background(TapAccent),
+                                contentAlignment = Alignment.Center
+                            ) {
                                 Text(
-                                    text = listOf(card.jobTitle, card.company).filter { it.isNotBlank() }.joinToString(" • "),
-                                    color = TapMuted,
-                                    fontSize = 14.sp
+                                    text = card.displayName.take(2).uppercase().ifBlank { "TA" },
+                                    fontFamily = AnthropicSerifDisplay,
+                                    color = TapInk,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 20.sp
                                 )
                             }
+                            Spacer(Modifier.width(14.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = card.displayName.ifBlank { "Tap User" },
+                                    fontFamily = AnthropicSerifDisplay,
+                                    color = Color.White,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                if (card.jobTitle.isNotBlank() || card.company.isNotBlank()) {
+                                    Text(
+                                        text = listOf(card.jobTitle, card.company).filter { it.isNotBlank() }.joinToString(" • "),
+                                        fontFamily = AnthropicSerifText,
+                                        color = TapMuted,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+                        HorizontalDivider(color = TapBorder)
+                        Spacer(Modifier.height(14.dp))
+
+                        ContactDetailRow(Icons.Rounded.Phone, "Phone", card.phone, card.isFieldSelected(ContactCard.FIELD_PHONE))
+                        ContactDetailRow(Icons.Rounded.Email, "Email", card.email, card.isFieldSelected(ContactCard.FIELD_EMAIL))
+                        ContactDetailRow(Icons.Rounded.Language, "Website", card.website, card.isFieldSelected(ContactCard.FIELD_WEBSITE))
+                        if (card.notes.isNotBlank()) {
+                            ContactDetailRow(Icons.Rounded.Notes, "Notes", card.notes, card.isFieldSelected(ContactCard.FIELD_NOTES))
                         }
                     }
+                }
 
-                    Spacer(Modifier.height(20.dp))
-                    HorizontalDivider(color = TapBorder)
-                    Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(16.dp))
 
-                    ContactDetailRow(Icons.Rounded.Phone, "Phone", card.phone, card.isFieldSelected(ContactCard.FIELD_PHONE))
-                    ContactDetailRow(Icons.Rounded.Email, "Email", card.email, card.isFieldSelected(ContactCard.FIELD_EMAIL))
-                    ContactDetailRow(Icons.Rounded.Language, "Website", card.website, card.isFieldSelected(ContactCard.FIELD_WEBSITE))
-                    if (card.notes.isNotBlank()) {
-                        ContactDetailRow(Icons.Rounded.Notes, "Notes", card.notes, card.isFieldSelected(ContactCard.FIELD_NOTES))
+                // Field Privacy Filters
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = card.isFieldSelected(ContactCard.FIELD_PHONE),
+                        onClick = { viewModel.toggleContactCardField(ContactCard.FIELD_PHONE) },
+                        label = { Text("Phone", fontFamily = AnthropicSerifText, fontSize = 12.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = TapAccent,
+                            selectedLabelColor = TapInk,
+                            containerColor = TapPanel,
+                            labelColor = TapMuted
+                        )
+                    )
+                    FilterChip(
+                        selected = card.isFieldSelected(ContactCard.FIELD_EMAIL),
+                        onClick = { viewModel.toggleContactCardField(ContactCard.FIELD_EMAIL) },
+                        label = { Text("Email", fontFamily = AnthropicSerifText, fontSize = 12.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = TapAccent,
+                            selectedLabelColor = TapInk,
+                            containerColor = TapPanel,
+                            labelColor = TapMuted
+                        )
+                    )
+                    FilterChip(
+                        selected = card.isFieldSelected(ContactCard.FIELD_WEBSITE),
+                        onClick = { viewModel.toggleContactCardField(ContactCard.FIELD_WEBSITE) },
+                        label = { Text("Website", fontFamily = AnthropicSerifText, fontSize = 12.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = TapAccent,
+                            selectedLabelColor = TapInk,
+                            containerColor = TapPanel,
+                            labelColor = TapMuted
+                        )
+                    )
+                }
+
+                Spacer(Modifier.height(24.dp))
+
+                // Minimal Sharing Methods Grid (Clean 4-Icon Layout)
+                Text(
+                    "QUICK SHARE",
+                    fontFamily = AnthropicSerifDisplay,
+                    color = TapMuted,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // 1. NFC Tag Writer
+                    ShareMethodGridTile(
+                        icon = Icons.Rounded.Nfc,
+                        label = "NFC Tag",
+                        modifier = Modifier.weight(1f),
+                        onClick = { viewModel.startNfcTagWriter() }
+                    )
+
+                    // 2. Display QR Code
+                    ShareMethodGridTile(
+                        icon = Icons.Rounded.QrCode2,
+                        label = "QR Code",
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            val vcard = card.toVCard3(filterSelected = true)
+                            qrBitmap = QrCodeGenerator.generateQrBitmap(vcard)
+                            showQrDialog = true
+                        }
+                    )
+
+                    // 3. Web Share
+                    ShareMethodGridTile(
+                        icon = Icons.Rounded.WifiTethering,
+                        label = if (isHttpRunning) "Web Active" else "Browser",
+                        active = isHttpRunning,
+                        modifier = Modifier.weight(1f),
+                        onClick = { viewModel.toggleLocalHttpServer(includeFiles = false) }
+                    )
+
+                    // 4. Sharesheet Export
+                    ShareMethodGridTile(
+                        icon = Icons.Rounded.Share,
+                        label = "Export",
+                        modifier = Modifier.weight(1f),
+                        onClick = { viewModel.shareContactViaSharesheet() }
+                    )
+                }
+
+                if (isHttpRunning && httpUrl.isNotBlank()) {
+                    Spacer(Modifier.height(12.dp))
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = TapAccent.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, TapAccent.copy(alpha = 0.3f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Rounded.Link, contentDescription = null, tint = TapAccent, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Web active: $httpUrl",
+                                fontFamily = AnthropicSerifText,
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     }
                 }
-            }
 
-            Spacer(Modifier.height(16.dp))
-
-            // Privacy field selectors
-            Text(
-                "FIELD PRIVACY CONTROLS",
-                color = TapMuted,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp)
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = card.isFieldSelected(ContactCard.FIELD_PHONE),
-                    onClick = { viewModel.toggleContactCardField(ContactCard.FIELD_PHONE) },
-                    label = { Text("Phone") },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = TapAccent,
-                        selectedLabelColor = TapInk,
-                        containerColor = TapPanel,
-                        labelColor = TapMuted
-                    )
-                )
-                FilterChip(
-                    selected = card.isFieldSelected(ContactCard.FIELD_EMAIL),
-                    onClick = { viewModel.toggleContactCardField(ContactCard.FIELD_EMAIL) },
-                    label = { Text("Email") },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = TapAccent,
-                        selectedLabelColor = TapInk,
-                        containerColor = TapPanel,
-                        labelColor = TapMuted
-                    )
-                )
-                FilterChip(
-                    selected = card.isFieldSelected(ContactCard.FIELD_WEBSITE),
-                    onClick = { viewModel.toggleContactCardField(ContactCard.FIELD_WEBSITE) },
-                    label = { Text("Website") },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = TapAccent,
-                        selectedLabelColor = TapInk,
-                        containerColor = TapPanel,
-                        labelColor = TapMuted
-                    )
-                )
-            }
-
-            Spacer(Modifier.height(24.dp))
-
-            // Sharing Options Header
-            Text(
-                "SHARING METHODS (NO RECIPIENT APP NEEDED)",
-                color = TapMuted,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp)
-            )
-
-            // Option 1: Write to NFC Tag
-            SharingActionCard(
-                icon = Icons.Rounded.Nfc,
-                title = "Write to Physical NFC Tag",
-                description = "Encode vCard NDEF record to NTAG213/215/216 tag. Works with any iPhone or Android tap.",
-                badgeText = "Physical NFC",
-                onClick = {
-                    viewModel.startNfcTagWriter()
-                }
-            )
-
-            Spacer(Modifier.height(10.dp))
-
-            // Option 2: QR Contact Card
-            SharingActionCard(
-                icon = Icons.Rounded.QrCode2,
-                title = "Display Contact QR Code",
-                description = "Scannable with any native iOS or Android Camera app. Adds contact with 1 tap.",
-                badgeText = "Universal QR",
-                onClick = {
-                    val vcard = card.toVCard3(filterSelected = true)
-                    qrBitmap = QrCodeGenerator.generateQrBitmap(vcard)
-                    showQrDialog = true
-                }
-            )
-
-            Spacer(Modifier.height(10.dp))
-
-            // Option 3: Local HTTP Browser Sharing
-            SharingActionCard(
-                icon = Icons.Rounded.WifiTethering,
-                title = if (isHttpRunning) "Web Sharing Active: $httpUrl" else "Share via Web Browser",
-                description = if (isHttpRunning) "Recipient opens URL in browser on same Wi-Fi/Hotspot." else "Start local HTTP server to download .vcf without apps.",
-                badgeText = if (isHttpRunning) "Active" else "Local Web",
-                badgeActive = isHttpRunning,
-                onClick = {
-                    viewModel.toggleLocalHttpServer(includeFiles = false)
-                }
-            )
-
-            Spacer(Modifier.height(10.dp))
-
-            // Option 4: System Sharesheet Export (.vcf)
-            SharingActionCard(
-                icon = Icons.Rounded.Share,
-                title = "Export vCard (.vcf) via System",
-                description = "Send contact card via Quick Share, WhatsApp, Email, or Messages.",
-                badgeText = "Sharesheet",
-                onClick = {
-                    viewModel.shareContactViaSharesheet()
-                }
-            )
-
-            Spacer(Modifier.height(30.dp))
+                Spacer(Modifier.height(28.dp))
             }
 
             MetroBottomBar(
@@ -324,7 +364,53 @@ fun ContactCardScreen(viewModel: TransferViewModel) {
 }
 
 @Composable
-private fun ContactDetailRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, value: String, isIncluded: Boolean) {
+private fun ShareMethodGridTile(
+    icon: ImageVector,
+    label: String,
+    modifier: Modifier = Modifier,
+    active: Boolean = false,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        color = if (active) TapAccent.copy(alpha = 0.15f) else TapPanel,
+        border = BorderStroke(1.dp, if (active) TapAccent else TapBorder),
+        modifier = modifier.height(76.dp)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(6.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(if (active) TapAccent else TapPanelLight),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = label,
+                    tint = if (active) TapInk else Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                label,
+                fontFamily = AnthropicSerifText,
+                color = if (active) TapAccent else TapMuted,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
+@Composable
+private fun ContactDetailRow(icon: ImageVector, label: String, value: String, isIncluded: Boolean) {
     if (value.isBlank()) return
     Row(
         modifier = Modifier
@@ -332,74 +418,19 @@ private fun ContactDetailRow(icon: androidx.compose.ui.graphics.vector.ImageVect
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = label, tint = if (isIncluded) TapAccent else TapMuted, modifier = Modifier.size(18.dp))
+        Icon(icon, contentDescription = label, tint = if (isIncluded) TapAccent else TapMuted, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(12.dp))
-        Text(value, color = if (isIncluded) Color.White else TapMuted, fontSize = 14.sp)
+        Text(value, fontFamily = AnthropicSerifText, color = if (isIncluded) Color.White else TapMuted, fontSize = 14.sp)
         if (!isIncluded) {
             Spacer(Modifier.width(8.dp))
-            Text("(Hidden)", color = Color(0xFFFF6B6B), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text("(Hidden)", color = Color(0xFFF87171), fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SharingActionCard(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    description: String,
-    badgeText: String,
-    badgeActive: Boolean = false,
-    onClick: () -> Unit
-) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
-        color = TapPanel,
-        border = androidx.compose.foundation.BorderStroke(1.dp, if (badgeActive) TapAccent else TapBorder),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(42.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (badgeActive) TapAccent else TapBorder),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, contentDescription = null, tint = if (badgeActive) TapInk else Color.White)
-            }
-            Spacer(Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(title, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                    Spacer(Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (badgeActive) TapAccent.copy(alpha = 0.2f) else TapBorder)
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            badgeText,
-                            color = if (badgeActive) TapAccent else TapMuted,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(description, color = TapMuted, fontSize = 12.sp)
-            }
-            Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = TapMuted)
-        }
-    }
-}
-
-@Composable
-private fun EditContactDialog(
+private fun EditContactSheet(
     initialCard: ContactCard,
     onDismiss: () -> Unit,
     onSave: (ContactCard) -> Unit
@@ -412,61 +443,75 @@ private fun EditContactDialog(
     var website by remember { mutableStateOf(initialCard.website) }
     var notes by remember { mutableStateOf(initialCard.notes) }
 
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = TapPanel,
-            border = androidx.compose.foundation.BorderStroke(1.dp, TapBorder),
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = TapPanel,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = TapBorder) }
+    ) {
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(horizontal = 24.dp)
+                .imePadding()
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(
+            Text(
+                "Edit Contact Card",
+                fontFamily = AnthropicSerifDisplay,
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(16.dp))
+
+            TapInputField(label = "Display Name", value = name, onValueChange = { name = it })
+            TapInputField(label = "Job Title", value = title, onValueChange = { title = it })
+            TapInputField(label = "Company / Org", value = company, onValueChange = { company = it })
+            TapInputField(label = "Phone Number", value = phone, onValueChange = { phone = it })
+            TapInputField(label = "Email Address", value = email, onValueChange = { email = it })
+            TapInputField(label = "Website / Profile URL", value = website, onValueChange = { website = it })
+            TapInputField(label = "Notes", value = notes, onValueChange = { notes = it })
+
+            Spacer(Modifier.height(20.dp))
+
+            Row(
                 modifier = Modifier
-                    .padding(20.dp)
-                    .verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .fillMaxWidth()
+                    .padding(bottom = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("Edit Contact Card", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(16.dp))
-
-                TapInputField(label = "Display Name", value = name, onValueChange = { name = it })
-                TapInputField(label = "Job Title", value = title, onValueChange = { title = it })
-                TapInputField(label = "Company / Org", value = company, onValueChange = { company = it })
-                TapInputField(label = "Phone Number", value = phone, onValueChange = { phone = it })
-                TapInputField(label = "Email Address", value = email, onValueChange = { email = it })
-                TapInputField(label = "Website / Profile URL", value = website, onValueChange = { website = it })
-                TapInputField(label = "Notes", value = notes, onValueChange = { notes = it })
-
-                Spacer(Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, TapBorder)
                 ) {
-                    TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
-                        Text("Cancel", color = TapMuted)
-                    }
-                    Button(
-                        onClick = {
-                            onSave(
-                                initialCard.copy(
-                                    displayName = name,
-                                    jobTitle = title,
-                                    company = company,
-                                    phone = phone,
-                                    email = email,
-                                    website = website,
-                                    notes = notes
-                                )
+                    Text("Cancel", fontFamily = AnthropicSerifText, color = TapMuted)
+                }
+                Button(
+                    onClick = {
+                        onSave(
+                            initialCard.copy(
+                                displayName = name,
+                                jobTitle = title,
+                                company = company,
+                                phone = phone,
+                                email = email,
+                                website = website,
+                                notes = notes
                             )
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = TapAccent, contentColor = TapInk),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Save Card")
-                    }
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = TapAccent, contentColor = TapInk),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f).height(48.dp)
+                ) {
+                    Text("Save Card", fontFamily = AnthropicSerifDisplay, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -476,7 +521,7 @@ private fun EditContactDialog(
 @Composable
 private fun TapInputField(label: String, value: String, onValueChange: (String) -> Unit) {
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        Text(label, color = TapMuted, fontSize = 12.sp)
+        Text(label, fontFamily = AnthropicSerifText, color = TapMuted, fontSize = 12.sp)
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
@@ -484,8 +529,11 @@ private fun TapInputField(label: String, value: String, onValueChange: (String) 
                 focusedTextColor = Color.White,
                 unfocusedTextColor = Color.White,
                 focusedBorderColor = TapAccent,
-                unfocusedBorderColor = TapBorder
+                unfocusedBorderColor = TapBorder,
+                focusedContainerColor = TapPanelLight,
+                unfocusedContainerColor = TapPanelLight
             ),
+            shape = RoundedCornerShape(10.dp),
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )

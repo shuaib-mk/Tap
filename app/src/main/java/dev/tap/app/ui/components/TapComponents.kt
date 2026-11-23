@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.tap.app.navigation.TapScreen
 import dev.tap.app.transfer.SelectedFile
+import dev.tap.app.ui.theme.AnthropicSerifDisplay
+import dev.tap.app.ui.theme.AnthropicSerifText
 
 // MetroList-inspired refined palette
 val TapInk = Color(0xFF090A0E)
@@ -72,8 +74,9 @@ fun TapTopBar(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
+                fontFamily = AnthropicSerifDisplay,
                 color = Color.White,
-                fontSize = 20.sp,
+                fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = (-0.5).sp,
                 maxLines = 1,
@@ -82,8 +85,9 @@ fun TapTopBar(
             if (!subtitle.isNullOrBlank()) {
                 Text(
                     text = subtitle,
+                    fontFamily = AnthropicSerifText,
                     color = TapMuted,
-                    fontSize = 11.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Normal
                 )
             }
@@ -182,6 +186,7 @@ fun MetroBottomBar(
                     Spacer(Modifier.height(3.dp))
                     Text(
                         text = label,
+                        fontFamily = AnthropicSerifDisplay,
                         color = if (selected) Color.White else TapMuted,
                         fontSize = 11.sp,
                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
@@ -223,8 +228,10 @@ fun TapButton(
     ) {
         Text(
             text = text,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold
+            fontFamily = AnthropicSerifDisplay,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp
         )
     }
 }

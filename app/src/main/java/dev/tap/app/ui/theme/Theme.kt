@@ -41,6 +41,7 @@ fun TapTheme(
     val colorScheme = if (darkTheme) DarkColorScheme else DarkColorScheme // Optimized for sleek dark native aesthetic
     MaterialTheme(
         colorScheme = colorScheme,
+        typography = TapTypography,
         content = content
     )
 }

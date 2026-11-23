@@ -1,7 +1,7 @@
 package dev.tap.app.ui.screens
 
-import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -17,13 +17,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.tap.app.navigation.TapScreen
-import dev.tap.app.proximity.QuickShareCompatibilityAdapter
 import dev.tap.app.ui.components.*
+import dev.tap.app.ui.theme.AnthropicSerifDisplay
+import dev.tap.app.ui.theme.AnthropicSerifText
 import dev.tap.app.ui.viewmodels.TransferViewModel
 
 @Composable
@@ -33,14 +35,52 @@ fun SettingsScreen(viewModel: TransferViewModel) {
     val signalingClient = viewModel.anywhereEngine.signalingClient
     val isBackgroundNfc by viewModel.isBackgroundTapSharing.collectAsState()
 
-    var signalingUrl by remember { mutableStateOf(signalingClient.getSignalingUrl()) }
     var customTurnEnabled by remember { mutableStateOf(turnProvider.isCustomTurnEnabled()) }
     var turnHost by remember { mutableStateOf(turnProvider.getTurnHost()) }
     var turnPort by remember { mutableStateOf(turnProvider.getTurnPort().toString()) }
     var turnSecret by remember { mutableStateOf("") }
-    var useTls by remember { mutableStateOf(false) }
+    var showClearHistoryDialog by remember { mutableStateOf(false) }
 
-    val quickShareReport = remember { QuickShareCompatibilityAdapter.checkCompatibility(context) }
+    if (showClearHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearHistoryDialog = false },
+            title = {
+                Text(
+                    "Clear Transfer History",
+                    fontFamily = AnthropicSerifDisplay,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    "Are you sure you want to delete all transfer logs from this device?",
+                    fontFamily = AnthropicSerifText,
+                    color = TapMuted,
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.clearHistory()
+                        showClearHistoryDialog = false
+                        Toast.makeText(context, "History cleared", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = TapRed, contentColor = Color.White),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Clear All", fontFamily = AnthropicSerifDisplay, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearHistoryDialog = false }) {
+                    Text("Cancel", fontFamily = AnthropicSerifText, color = TapMuted)
+                }
+            },
+            containerColor = TapPanel
+        )
+    }
 
     Surface(modifier = Modifier.fillMaxSize(), color = TapInk) {
         Column(
@@ -56,172 +96,87 @@ fun SettingsScreen(viewModel: TransferViewModel) {
                     .verticalScroll(rememberScrollState())
             ) {
                 // Header
-                TapTopBar(
-                    title = "Settings",
-                    subtitle = "Configuration, network & hardware",
-                    onBack = null
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Settings",
+                        fontFamily = AnthropicSerifDisplay,
+                        color = Color.White,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.5).sp
+                    )
+                }
 
-                // 1. Device Profile Section
-                SectionHeader("DEVICE IDENTITY")
+                Spacer(Modifier.height(8.dp))
+
+                // Section 1: Device Info
+                SettingsSectionTitle("DEVICE")
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = TapPanel,
+                    border = BorderStroke(1.dp, TapBorder),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Text("Device Name", color = TapMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(4.dp))
-                        Text(viewModel.deviceName, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(TapPanelLight),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Rounded.Smartphone, contentDescription = null, tint = TapAccent, modifier = Modifier.size(20.dp))
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Device Name", fontFamily = AnthropicSerifText, color = TapMuted, fontSize = 11.sp)
+                            Spacer(Modifier.height(2.dp))
+                            Text(viewModel.deviceName, fontFamily = AnthropicSerifDisplay, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
 
                 Spacer(Modifier.height(20.dp))
 
-                // 2. WebRTC Anywhere Signaling & TURN Infrastructure
-                SectionHeader("WEBRTC SIGNALING & NAT TRAVERSAL")
+                // Section 2: Proximity & Tap Options
+                SettingsSectionTitle("PROXIMITY & SHARING")
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = TapPanel,
+                    border = BorderStroke(1.dp, TapBorder),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Text("Signaling Server Endpoint", color = TapMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(6.dp))
-                        OutlinedTextField(
-                            value = signalingUrl,
-                            onValueChange = { signalingUrl = it },
-                            placeholder = { Text("wss://signal.tap.dev/ws", color = TapMuted) },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                focusedBorderColor = TapAccent,
-                                unfocusedBorderColor = TapBorder,
-                                focusedContainerColor = TapPanelLight,
-                                unfocusedContainerColor = TapPanelLight
-                            ),
-                            shape = RoundedCornerShape(10.dp),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Spacer(Modifier.height(14.dp))
-
-                        // Custom TURN Toggle
+                    Column(modifier = Modifier.padding(16.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Custom COTURN Relay", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                Text("Fallback when direct P2P NAT traversal fails", color = TapMuted, fontSize = 11.sp)
-                            }
-                            Switch(
-                                checked = customTurnEnabled,
-                                onCheckedChange = { customTurnEnabled = it },
-                                colors = SwitchDefaults.colors(checkedThumbColor = TapInk, checkedTrackColor = TapAccent)
-                            )
-                        }
-
-                        if (customTurnEnabled) {
-                            Spacer(Modifier.height(10.dp))
-                            OutlinedTextField(
-                                value = turnHost,
-                                onValueChange = { turnHost = it },
-                                placeholder = { Text("turn.yourdomain.com", color = TapMuted) },
-                                label = { Text("COTURN Host", color = TapMuted, fontSize = 12.sp) },
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White,
-                                    focusedBorderColor = TapAccent,
-                                    unfocusedBorderColor = TapBorder
-                                ),
-                                shape = RoundedCornerShape(10.dp),
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            Spacer(Modifier.height(8.dp))
-                            OutlinedTextField(
-                                value = turnPort,
-                                onValueChange = { turnPort = it },
-                                placeholder = { Text("3478", color = TapMuted) },
-                                label = { Text("Port", color = TapMuted, fontSize = 12.sp) },
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White,
-                                    focusedBorderColor = TapAccent,
-                                    unfocusedBorderColor = TapBorder
-                                ),
-                                shape = RoundedCornerShape(10.dp),
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            Spacer(Modifier.height(8.dp))
-                            OutlinedTextField(
-                                value = turnSecret,
-                                onValueChange = { turnSecret = it },
-                                placeholder = { Text("Shared secret for HMAC tokens", color = TapMuted) },
-                                label = { Text("HMAC Shared Secret (Never static)", color = TapMuted, fontSize = 12.sp) },
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White,
-                                    focusedBorderColor = TapAccent,
-                                    unfocusedBorderColor = TapBorder
-                                ),
-                                shape = RoundedCornerShape(10.dp),
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-
-                        Spacer(Modifier.height(14.dp))
-                        Button(
-                            onClick = {
-                                signalingClient.setSignalingUrl(signalingUrl.trim())
-                                val port = turnPort.toIntOrNull() ?: 3478
-                                turnProvider.saveCustomTurnConfig(
-                                    enabled = customTurnEnabled,
-                                    host = turnHost.trim(),
-                                    port = port,
-                                    secret = turnSecret.trim().ifEmpty { null },
-                                    username = null,
-                                    password = null,
-                                    useTls = useTls
+                                Text(
+                                    "Background NFC Sharing",
+                                    fontFamily = AnthropicSerifDisplay,
+                                    color = Color.White,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold
                                 )
-                                Toast.makeText(context, "Network configuration saved", Toast.LENGTH_SHORT).show()
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = TapAccent, contentColor = TapInk),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth().height(42.dp)
-                        ) {
-                            Text("Save Network Settings", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(20.dp))
-
-                // 3. Hardware & Features
-                SectionHeader("HARDWARE & INTEGRATIONS")
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = TapPanel,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        // Background NFC Sharing Toggle
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Always-Ready NFC Tap Sharing", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                Text("Emulate contact card even when app is closed", color = TapMuted, fontSize = 11.sp)
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    "Share identity card when phones touch, even if TAP is closed",
+                                    fontFamily = AnthropicSerifText,
+                                    color = TapMuted,
+                                    fontSize = 12.sp
+                                )
                             }
+                            Spacer(Modifier.width(12.dp))
                             Switch(
                                 checked = isBackgroundNfc,
                                 onCheckedChange = { viewModel.setBackgroundTapSharing(it) },
@@ -231,90 +186,222 @@ fun SettingsScreen(viewModel: TransferViewModel) {
 
                         HorizontalDivider(color = TapBorder, modifier = Modifier.padding(vertical = 12.dp))
 
-                        // Physical Tag Writer
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { viewModel.navigateTo(TapScreen.NfcCardWriter) },
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Rounded.Nfc, contentDescription = null, tint = TapAccent, modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Physical NFC Tag Writer", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                Text("Encode NTAG213/215/216 cards with your vCard", color = TapMuted, fontSize = 11.sp)
-                            }
-                            Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = TapMuted, modifier = Modifier.size(18.dp))
-                        }
+                        SettingsNavRow(
+                            icon = Icons.Rounded.Nfc,
+                            title = "Physical NFC Card Writer",
+                            subtitle = "Encode external NTAG cards with vCard",
+                            onClick = { viewModel.navigateTo(TapScreen.NfcCardWriter) }
+                        )
 
                         HorizontalDivider(color = TapBorder, modifier = Modifier.padding(vertical = 12.dp))
 
-                        // Hardware Diagnostics
+                        SettingsNavRow(
+                            icon = Icons.Rounded.Memory,
+                            title = "Hardware Diagnostics",
+                            subtitle = "Audit NFC, HCE, BLE and Wi-Fi capabilities",
+                            onClick = { viewModel.navigateTo(TapScreen.CompatibilityDiagnostics) }
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(20.dp))
+
+                // Section 3: Relay & Network (COTURN)
+                SettingsSectionTitle("RELAY & NETWORK")
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = TapPanel,
+                    border = BorderStroke(1.dp, TapBorder),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { viewModel.navigateTo(TapScreen.CompatibilityDiagnostics) },
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Rounded.Analytics, contentDescription = null, tint = TapAccent, modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Compatibility Diagnostics", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                Text("Audit NFC HCE, WebRTC, Wi-Fi Direct & One UI status", color = TapMuted, fontSize = 11.sp)
+                                Text(
+                                    "Custom COTURN Relay",
+                                    fontFamily = AnthropicSerifDisplay,
+                                    color = Color.White,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    "Self-hosted TURN relay for restrictive firewalls",
+                                    fontFamily = AnthropicSerifText,
+                                    color = TapMuted,
+                                    fontSize = 12.sp
+                                )
                             }
-                            Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = TapMuted, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Switch(
+                                checked = customTurnEnabled,
+                                onCheckedChange = { customTurnEnabled = it },
+                                colors = SwitchDefaults.colors(checkedThumbColor = TapInk, checkedTrackColor = TapAccent)
+                            )
+                        }
+
+                        if (customTurnEnabled) {
+                            Spacer(Modifier.height(14.dp))
+                            OutlinedTextField(
+                                value = turnHost,
+                                onValueChange = { turnHost = it },
+                                placeholder = { Text("turn.yourdomain.com", color = TapMuted) },
+                                label = { Text("Host", color = TapMuted, fontSize = 11.sp) },
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    focusedBorderColor = TapAccent,
+                                    unfocusedBorderColor = TapBorder,
+                                    focusedContainerColor = TapPanelLight,
+                                    unfocusedContainerColor = TapPanelLight
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Spacer(Modifier.height(8.dp))
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                    value = turnPort,
+                                    onValueChange = { turnPort = it },
+                                    placeholder = { Text("3478", color = TapMuted) },
+                                    label = { Text("Port", color = TapMuted, fontSize = 11.sp) },
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        focusedBorderColor = TapAccent,
+                                        unfocusedBorderColor = TapBorder,
+                                        focusedContainerColor = TapPanelLight,
+                                        unfocusedContainerColor = TapPanelLight
+                                    ),
+                                    shape = RoundedCornerShape(10.dp),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+
+                                OutlinedTextField(
+                                    value = turnSecret,
+                                    onValueChange = { turnSecret = it },
+                                    placeholder = { Text("Secret", color = TapMuted) },
+                                    label = { Text("Shared Secret", color = TapMuted, fontSize = 11.sp) },
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        focusedBorderColor = TapAccent,
+                                        unfocusedBorderColor = TapBorder,
+                                        focusedContainerColor = TapPanelLight,
+                                        unfocusedContainerColor = TapPanelLight
+                                    ),
+                                    shape = RoundedCornerShape(10.dp),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(2f)
+                                )
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+
+                            Button(
+                                onClick = {
+                                    val port = turnPort.toIntOrNull() ?: 3478
+                                    turnProvider.saveCustomTurnConfig(
+                                        enabled = customTurnEnabled,
+                                        host = turnHost.trim(),
+                                        port = port,
+                                        secret = turnSecret.trim().ifEmpty { null },
+                                        username = null,
+                                        password = null,
+                                        useTls = false
+                                    )
+                                    Toast.makeText(context, "TURN configuration saved", Toast.LENGTH_SHORT).show()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = TapAccent, contentColor = TapInk),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth().height(42.dp)
+                            ) {
+                                Text("Save Settings", fontFamily = AnthropicSerifDisplay, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
 
                 Spacer(Modifier.height(20.dp))
 
-                // 4. About TAP
-                SectionHeader("ABOUT")
+                // Section 4: Data & Reset
+                SettingsSectionTitle("DATA")
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = TapPanel,
+                    border = BorderStroke(1.dp, TapBorder),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
+                    Column(modifier = Modifier.padding(16.dp)) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showClearHistoryDialog = true },
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("TAP Universal", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            Text("v1.4.0 (Build 6)", color = TapAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Icon(Icons.Rounded.DeleteSweep, contentDescription = null, tint = TapRed, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(14.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Clear Activity History", fontFamily = AnthropicSerifDisplay, color = TapRed, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                Spacer(Modifier.height(2.dp))
+                                Text("Remove all logged transfer records", fontFamily = AnthropicSerifText, color = TapMuted, fontSize = 12.sp)
+                            }
                         }
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "End-to-end encrypted proximity & anywhere transfer platform. Zero tracking, zero cloud storage, zero telemetry.",
-                            color = TapMuted,
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp
-                        )
                     }
                 }
 
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(30.dp))
             }
 
-            // Bottom Navigation
             MetroBottomBar(
                 currentScreen = TapScreen.Settings,
-                onNavigate = { screen -> viewModel.navigateTo(screen) }
+                onNavigate = { viewModel.navigateTo(it) }
             )
         }
     }
 }
 
 @Composable
-private fun SectionHeader(title: String) {
+private fun SettingsSectionTitle(title: String) {
     Text(
         text = title,
+        fontFamily = AnthropicSerifDisplay,
         color = TapMuted,
         fontSize = 11.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = 1.sp,
-        modifier = Modifier.padding(bottom = 6.dp, start = 4.dp)
+        modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)
     )
+}
+
+@Composable
+private fun SettingsNavRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = TapAccent, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontFamily = AnthropicSerifDisplay, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(2.dp))
+            Text(subtitle, fontFamily = AnthropicSerifText, color = TapMuted, fontSize = 11.sp)
+        }
+        Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = TapMuted, modifier = Modifier.size(18.dp))
+    }
 }
