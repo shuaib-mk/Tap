@@ -48,6 +48,13 @@ class WebRtcPeerConnectionManager(
     private var peerConnection: PeerConnection? = null
     private var dataChannel: DataChannel? = null
 
+    private val pendingIceCandidates = mutableListOf<IceCandidate>()
+    private val gatheredLocalCandidates = mutableListOf<IceCandidate>()
+    var lastGeneratedOffer: SessionDescription? = null
+        private set
+    private var hasHandledRemoteOffer = false
+    private var hasHandledRemoteAnswer = false
+
     var listener: WebRtcConnectionListener? = null
     var transportType: WebRtcTransportType = WebRtcTransportType.UNKNOWN
         private set
@@ -103,6 +110,7 @@ class WebRtcPeerConnectionManager(
         peerConnection = factory?.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
             override fun onIceCandidate(candidate: IceCandidate?) {
                 candidate?.let {
+                    synchronized(gatheredLocalCandidates) { gatheredLocalCandidates.add(it) }
                     scope.launch(Dispatchers.Main) {
                         listener?.onIceCandidateGenerated(it)
                     }
@@ -231,6 +239,10 @@ class WebRtcPeerConnectionManager(
         return dataChannel?.bufferedAmount() ?: 0L
     }
 
+    fun getGatheredLocalCandidates(): List<IceCandidate> {
+        return synchronized(gatheredLocalCandidates) { gatheredLocalCandidates.toList() }
+    }
+
     fun createOffer(onOfferCreated: (SessionDescription) -> Unit) {
         val pc = peerConnection ?: return
         val constraints = MediaConstraints().apply {
@@ -241,6 +253,7 @@ class WebRtcPeerConnectionManager(
         pc.createOffer(object : SdpObserver {
             override fun onCreateSuccess(desc: SessionDescription?) {
                 desc?.let { sdp ->
+                    lastGeneratedOffer = sdp
                     pc.setLocalDescription(object : SdpObserver {
                         override fun onCreateSuccess(p0: SessionDescription?) {}
                         override fun onSetSuccess() {
@@ -263,11 +276,16 @@ class WebRtcPeerConnectionManager(
 
     fun handleRemoteOffer(offerSdp: String, onAnswerCreated: (SessionDescription) -> Unit) {
         val pc = peerConnection ?: return
+        if (hasHandledRemoteOffer && dataChannel?.state() == DataChannel.State.OPEN) {
+            return
+        }
+        hasHandledRemoteOffer = true
         val remoteDesc = SessionDescription(SessionDescription.Type.OFFER, offerSdp)
 
         pc.setRemoteDescription(object : SdpObserver {
             override fun onCreateSuccess(p0: SessionDescription?) {}
             override fun onSetSuccess() {
+                drainPendingIceCandidates()
                 val constraints = MediaConstraints()
                 pc.createAnswer(object : SdpObserver {
                     override fun onCreateSuccess(answerDesc: SessionDescription?) {
@@ -300,10 +318,16 @@ class WebRtcPeerConnectionManager(
 
     fun handleRemoteAnswer(answerSdp: String) {
         val pc = peerConnection ?: return
+        if (hasHandledRemoteAnswer && dataChannel?.state() == DataChannel.State.OPEN) {
+            return
+        }
+        hasHandledRemoteAnswer = true
         val remoteDesc = SessionDescription(SessionDescription.Type.ANSWER, answerSdp)
         pc.setRemoteDescription(object : SdpObserver {
             override fun onCreateSuccess(p0: SessionDescription?) {}
-            override fun onSetSuccess() {}
+            override fun onSetSuccess() {
+                drainPendingIceCandidates()
+            }
             override fun onCreateFailure(p0: String?) {}
             override fun onSetFailure(err: String?) {
                 listener?.onError("Failed to set remote answer: $err")
@@ -312,8 +336,25 @@ class WebRtcPeerConnectionManager(
     }
 
     fun addRemoteIceCandidate(sdpMid: String, sdpMLineIndex: Int, candidateStr: String) {
+        val pc = peerConnection ?: return
         val candidate = IceCandidate(sdpMid, sdpMLineIndex, candidateStr)
-        peerConnection?.addIceCandidate(candidate)
+        synchronized(pendingIceCandidates) {
+            if (pc.remoteDescription != null) {
+                pc.addIceCandidate(candidate)
+            } else {
+                pendingIceCandidates.add(candidate)
+            }
+        }
+    }
+
+    private fun drainPendingIceCandidates() {
+        val pc = peerConnection ?: return
+        synchronized(pendingIceCandidates) {
+            pendingIceCandidates.forEach { candidate ->
+                pc.addIceCandidate(candidate)
+            }
+            pendingIceCandidates.clear()
+        }
     }
 
     private fun updateState(newState: WebRtcConnectionState) {
@@ -329,5 +370,10 @@ class WebRtcPeerConnectionManager(
         peerConnection = null
         connectionState = WebRtcConnectionState.IDLE
         transportType = WebRtcTransportType.UNKNOWN
+        lastGeneratedOffer = null
+        hasHandledRemoteOffer = false
+        hasHandledRemoteAnswer = false
+        synchronized(pendingIceCandidates) { pendingIceCandidates.clear() }
+        synchronized(gatheredLocalCandidates) { gatheredLocalCandidates.clear() }
     }
 }

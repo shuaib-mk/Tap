@@ -277,8 +277,23 @@ class AnywhereTransferEngine(
             sasCode = sas
         )
 
-        // Send transfer manifest to peer
+        // 1. Send transfer manifest to peer
         signalingClient.sendTransferManifest(pendingManifests, securityManager.getPublicKeyBase64(), deviceName)
+
+        // 2. Re-send SDP Offer to peer now that peer is actively listening
+        val offer = peerConnectionManager.lastGeneratedOffer
+        if (offer != null) {
+            signalingClient.sendSdpOffer(offer.description)
+        } else {
+            peerConnectionManager.createOffer { sdp ->
+                signalingClient.sendSdpOffer(sdp.description)
+            }
+        }
+
+        // 3. Re-send all gathered local ICE candidates
+        peerConnectionManager.getGatheredLocalCandidates().forEach { cand ->
+            signalingClient.sendIceCandidate(cand.sdpMid, cand.sdpMLineIndex, cand.sdp)
+        }
     }
 
     override fun onSdpOfferReceived(sdp: String) {
@@ -333,7 +348,11 @@ class AnywhereTransferEngine(
                 _engineState.value = AnywhereEngineState.Idle
                 peerConnectionManager.close()
             } else {
-                _engineState.value = AnywhereEngineState.Connecting(payload.deviceName, peerConnectionManager.transportType)
+                _engineState.value = if (isDataChannelReady) {
+                    AnywhereEngineState.Transferring(chunkTransport.progress.value, peerConnectionManager.transportType)
+                } else {
+                    AnywhereEngineState.Connecting(payload.deviceName, peerConnectionManager.transportType)
+                }
             }
         }
     }
@@ -353,7 +372,11 @@ class AnywhereTransferEngine(
         }
 
         isPeerAccepted = true
-        _engineState.value = AnywhereEngineState.Connecting(remoteDeviceName, peerConnectionManager.transportType)
+        _engineState.value = if (isDataChannelReady) {
+            AnywhereEngineState.Transferring(chunkTransport.progress.value, peerConnectionManager.transportType)
+        } else {
+            AnywhereEngineState.Connecting(remoteDeviceName, peerConnectionManager.transportType)
+        }
         checkAndStartSenderTransfer()
     }
 

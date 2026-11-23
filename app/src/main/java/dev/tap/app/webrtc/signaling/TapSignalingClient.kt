@@ -139,7 +139,7 @@ class TapSignalingClient(
             webSocket?.close(1000, "Switching session")
         } catch (_: Exception) {}
 
-        val wssUrl = "$NTFY_WSS_BASE/$topic/ws"
+        val wssUrl = "$NTFY_WSS_BASE/$topic/ws?since=10m"
         Log.d(TAG, "Subscribing to public signaling: $wssUrl")
 
         val request = Request.Builder().url(wssUrl).build()
@@ -273,7 +273,7 @@ class TapSignalingClient(
                 sessionId = sid,
                 sessionCode = currentSessionCode ?: "",
                 senderId = localDeviceId,
-                receiverId = localDeviceId,
+                receiverId = "",
                 sdp = sdp
             )
         )
@@ -302,7 +302,7 @@ class TapSignalingClient(
                 sessionId = sid,
                 sessionCode = currentSessionCode ?: "",
                 senderId = localDeviceId,
-                receiverId = localDeviceId,
+                receiverId = "",
                 accepted = accepted,
                 sasCode = sasCode,
                 publicKeyBase64 = publicKey,
@@ -389,17 +389,19 @@ class TapSignalingClient(
                 val innerMessage = jsonElement.jsonObject["message"]?.jsonPrimitive?.content ?: return
                 val payload = json.decodeFromString<SignalingPayload>(innerMessage)
                 // Filter out echoes sent by this local device
-                if (payload.senderId != localDeviceId && (payload.receiverId.isBlank() || payload.receiverId != localDeviceId || payload.type == SignalingType.SESSION_JOIN)) {
+                if (payload.senderId != localDeviceId && (payload.receiverId.isBlank() || payload.receiverId == localDeviceId)) {
                     handleIncomingPayload(payload)
                 }
             } else if (rawText.contains("\"type\":")) {
                 // Direct signaling payload fallback
                 val payload = json.decodeFromString<SignalingPayload>(rawText)
-                if (payload.senderId != localDeviceId) {
+                if (payload.senderId != localDeviceId && (payload.receiverId.isBlank() || payload.receiverId == localDeviceId)) {
                     handleIncomingPayload(payload)
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.w(TAG, "Error handling incoming ntfy message: ${e.message}")
+        }
     }
 
     fun handleIncomingPayload(payload: SignalingPayload) {

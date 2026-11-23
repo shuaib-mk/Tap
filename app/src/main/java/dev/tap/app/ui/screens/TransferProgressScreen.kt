@@ -200,88 +200,62 @@ fun TransferProgressScreen(viewModel: TransferViewModel) {
                         Surface(
                             shape = RoundedCornerShape(20.dp),
                             color = TapPanel,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, TapAccent.copy(alpha = 0.5f)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, TapBorder),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(
-                                modifier = Modifier.padding(20.dp),
+                                modifier = Modifier.padding(24.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .background(TapGreen.copy(alpha = 0.15f))
-                                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(CircleShape)
-                                            .background(TapGreen)
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        "RECIPIENT CONNECTED",
-                                        color = TapGreen,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 1.sp,
-                                        fontFamily = AnthropicSerifDisplay
-                                    )
-                                }
-
-                                Spacer(Modifier.height(12.dp))
-
                                 Text(
                                     text = peer.peerDeviceName,
                                     fontFamily = AnthropicSerifDisplay,
-                                    fontSize = 22.sp,
+                                    fontSize = 24.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
                                 )
 
                                 Spacer(Modifier.height(4.dp))
                                 Text(
-                                    "${files.size} items • ${ProximityFile.formatBytes(files.sumOf { it.sizeBytes })}",
+                                    "${files.size} ${if (files.size == 1) "item" else "items"} • ${ProximityFile.formatBytes(files.sumOf { it.sizeBytes })}",
                                     color = TapMuted,
                                     fontSize = 12.sp,
                                     fontFamily = AnthropicSerifText
                                 )
 
-                                Spacer(Modifier.height(20.dp))
+                                Spacer(Modifier.height(24.dp))
 
-                                // Security SAS Verification Code Box
+                                // Minimalist Security Verification Code Box
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(TapAccent.copy(alpha = 0.12f))
-                                        .border(1.dp, TapAccent.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                                        .padding(16.dp),
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(TapPanelLight)
+                                        .border(1.dp, TapBorder, RoundedCornerShape(14.dp))
+                                        .padding(vertical = 18.dp, horizontal = 16.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                         Text(
-                                            "SECURITY VERIFICATION CODE",
-                                            color = TapAccent,
+                                            "SECURITY CODE",
+                                            color = TapMuted,
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,
-                                            letterSpacing = 1.5.sp,
+                                            letterSpacing = 2.sp,
                                             fontFamily = AnthropicSerifDisplay
                                         )
-                                        Spacer(Modifier.height(4.dp))
+                                        Spacer(Modifier.height(6.dp))
                                         Text(
                                             text = peer.sasCode,
                                             color = Color.White,
-                                            fontSize = 30.sp,
+                                            fontSize = 34.sp,
                                             fontWeight = FontWeight.Black,
                                             letterSpacing = 4.sp,
                                             fontFamily = AnthropicSerifDisplay
                                         )
-                                        Spacer(Modifier.height(4.dp))
+                                        Spacer(Modifier.height(6.dp))
                                         Text(
-                                            "Confirm this code matches the recipient's screen",
+                                            "Confirm this code matches recipient's screen",
                                             color = TapMuted,
                                             fontSize = 11.sp,
                                             fontFamily = AnthropicSerifText
@@ -289,7 +263,7 @@ fun TransferProgressScreen(viewModel: TransferViewModel) {
                                     }
                                 }
 
-                                Spacer(Modifier.height(20.dp))
+                                Spacer(Modifier.height(22.dp))
 
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -297,7 +271,7 @@ fun TransferProgressScreen(viewModel: TransferViewModel) {
                                 ) {
                                     CircularProgressIndicator(
                                         color = TapAccent,
-                                        modifier = Modifier.size(16.dp),
+                                        modifier = Modifier.size(14.dp),
                                         strokeWidth = 2.dp
                                     )
                                     Spacer(Modifier.width(10.dp))
@@ -336,6 +310,7 @@ fun TransferProgressScreen(viewModel: TransferViewModel) {
                     Surface(
                         shape = RoundedCornerShape(16.dp),
                         color = TapPanel,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, TapBorder),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
@@ -385,12 +360,13 @@ fun TransferProgressScreen(viewModel: TransferViewModel) {
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(10.dp))
-                                        .background(TapAccent.copy(alpha = 0.12f))
+                                        .background(TapPanelLight)
+                                        .border(1.dp, TapBorder, RoundedCornerShape(10.dp))
                                         .padding(10.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("VERIFICATION CODE", color = TapAccent, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                                        Text("SECURITY CODE", color = TapMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                                         Spacer(Modifier.height(2.dp))
                                         Text(sas, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = 3.sp)
                                         Spacer(Modifier.height(2.dp))
@@ -407,6 +383,7 @@ fun TransferProgressScreen(viewModel: TransferViewModel) {
                     Surface(
                         shape = RoundedCornerShape(16.dp),
                         color = TapPanel,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, TapBorder),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {

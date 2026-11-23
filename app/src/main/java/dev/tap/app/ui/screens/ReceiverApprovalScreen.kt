@@ -1,6 +1,7 @@
 package dev.tap.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,6 +23,8 @@ import androidx.compose.ui.unit.sp
 import dev.tap.app.navigation.TapScreen
 import dev.tap.app.proximity.ProximityFile
 import dev.tap.app.ui.components.*
+import dev.tap.app.ui.theme.AnthropicSerifDisplay
+import dev.tap.app.ui.theme.AnthropicSerifText
 import dev.tap.app.ui.viewmodels.TransferViewModel
 import dev.tap.app.webrtc.AnywhereEngineState
 
@@ -58,6 +61,7 @@ fun ReceiverApprovalScreen(viewModel: TransferViewModel) {
                     Surface(
                         shape = RoundedCornerShape(16.dp),
                         color = TapPanel,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, TapBorder),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
@@ -73,28 +77,29 @@ fun ReceiverApprovalScreen(viewModel: TransferViewModel) {
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column {
-                                    Text(request.senderDeviceName, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                                    Text("${request.files.size} files • ${ProximityFile.formatBytes(request.totalBytes)}", color = TapMuted, fontSize = 12.sp)
+                                    Text(request.senderDeviceName, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = AnthropicSerifDisplay)
+                                    Text("${request.files.size} ${if (request.files.size == 1) "file" else "files"} • ${ProximityFile.formatBytes(request.totalBytes)}", color = TapMuted, fontSize = 12.sp, fontFamily = AnthropicSerifText)
                                 }
                             }
 
-                            Spacer(Modifier.height(14.dp))
+                            Spacer(Modifier.height(16.dp))
 
-                            // SAS Verification Box
+                            // Minimalist SAS Verification Box
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(TapAccent.copy(alpha = 0.12f))
-                                    .padding(12.dp),
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(TapPanelLight)
+                                    .border(1.dp, TapBorder, RoundedCornerShape(12.dp))
+                                    .padding(14.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("SECURITY VERIFICATION CODE", color = TapAccent, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                                    Spacer(Modifier.height(2.dp))
-                                    Text(request.sasCode, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Black, letterSpacing = 3.sp)
-                                    Spacer(Modifier.height(2.dp))
-                                    Text("Check that sender shows this identical code", color = TapMuted, fontSize = 10.sp)
+                                    Text("SECURITY CODE", color = TapMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp, fontFamily = AnthropicSerifDisplay)
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(request.sasCode, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Black, letterSpacing = 4.sp, fontFamily = AnthropicSerifDisplay)
+                                    Spacer(Modifier.height(4.dp))
+                                    Text("Verify this code matches sender's screen", color = TapMuted, fontSize = 11.sp, fontFamily = AnthropicSerifText)
                                 }
                             }
                         }
