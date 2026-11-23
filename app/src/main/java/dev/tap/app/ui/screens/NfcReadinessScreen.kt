@@ -91,6 +91,44 @@ fun NfcReadinessScreen(viewModel: TransferViewModel) {
                 }
             }
 
+            Spacer(Modifier.height(16.dp))
+
+            // Background Tap Sharing Quick Switch
+            val isBackgroundActive by viewModel.isBackgroundTapSharing.collectAsState()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(TapPanel)
+                    .border(1.dp, if (isBackgroundActive) TapAccent else TapBorder, RoundedCornerShape(16.dp))
+                    .padding(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Background Tap Sharing", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text(
+                            if (isBackgroundActive) "Always-Ready: tap from Home/Lockscreen" else "Disabled: tap sharing inactive",
+                            color = if (isBackgroundActive) TapAccent else TapMuted,
+                            fontSize = 12.sp
+                        )
+                    }
+                    Switch(
+                        checked = isBackgroundActive,
+                        onCheckedChange = { viewModel.setBackgroundTapSharing(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = TapInk,
+                            checkedTrackColor = TapAccent,
+                            uncheckedThumbColor = TapMuted,
+                            uncheckedTrackColor = TapInk
+                        )
+                    )
+                }
+            }
+
             Spacer(Modifier.height(20.dp))
 
             Text(

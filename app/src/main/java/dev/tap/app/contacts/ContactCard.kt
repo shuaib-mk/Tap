@@ -43,7 +43,8 @@ data class ContactCard(
         const val FIELD_NOTES = "notes"
         const val FIELD_SOCIAL = "social"
 
-        const val MIME_TYPE_VCARD = "text/vcard"
+        const val MIME_TYPE_VCARD = "text/x-vcard"
+        const val MIME_TYPE_VCARD_STANDARD = "text/vcard"
 
         fun createDefault(): ContactCard {
             return ContactCard(

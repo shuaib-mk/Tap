@@ -64,6 +64,65 @@ fun SettingsScreen(viewModel: TransferViewModel) {
 
             Spacer(Modifier.height(24.dp))
 
+            Text("ALWAYS-READY BACKGROUND NFC", color = TapMuted, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Spacer(Modifier.height(8.dp))
+
+            val isBackgroundActive by viewModel.isBackgroundTapSharing.collectAsState()
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = TapPanel),
+                border = androidx.compose.foundation.BorderStroke(1.dp, if (isBackgroundActive) TapAccent else TapBorder)
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isBackgroundActive) TapAccent else TapBorder),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Rounded.Nfc, contentDescription = null, tint = if (isBackgroundActive) TapInk else Color.White)
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text("Background Tap Sharing", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    if (isBackgroundActive) "Always-Ready HCE Active" else "Disabled",
+                                    color = if (isBackgroundActive) TapAccent else TapMuted,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = isBackgroundActive,
+                            onCheckedChange = { viewModel.setBackgroundTapSharing(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = TapInk,
+                                checkedTrackColor = TapAccent,
+                                uncheckedThumbColor = TapMuted,
+                                uncheckedTrackColor = TapInk
+                            )
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Enables continuous, passive NFC contact sharing. When another phone taps your Galaxy A54, it reads your contact card directly via standards-compatible Type 4 Tag HCE — even when TAP is closed, in the background, or on the lock screen.\n\n• Recipient phone does NOT need TAP installed.\n• Zero battery drain from background polling (uses passive RF field).",
+                        color = TapMuted,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
             Text("Hardware & Capabilities", color = TapMuted, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
 

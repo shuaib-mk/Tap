@@ -76,7 +76,14 @@ class TransferViewModel(application: Application) : AndroidViewModel(application
     private val _contactCard = MutableStateFlow(contactRepo.getContactCard())
     val contactCard: StateFlow<ContactCard> = _contactCard.asStateFlow()
 
-    // NFC Mode
+    // NFC Mode & Background Tap Sharing
+    private val nfcSettingsRepo = dev.tap.app.nfc.NfcSettingsRepository.getInstance(application)
+    val isBackgroundTapSharing: StateFlow<Boolean> = nfcSettingsRepo.isBackgroundSharingEnabled
+
+    fun setBackgroundTapSharing(enabled: Boolean) {
+        nfcSettingsRepo.setBackgroundSharingEnabled(enabled)
+    }
+
     private val _nfcMode = MutableStateFlow(NfcMode.MODE_B_CONTACT_CARD)
     val nfcMode: StateFlow<NfcMode> = _nfcMode.asStateFlow()
 

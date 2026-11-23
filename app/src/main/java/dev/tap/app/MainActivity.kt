@@ -1,8 +1,10 @@
 package dev.tap.app
 
+import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
 import android.nfc.NfcAdapter
+import android.nfc.cardemulation.CardEmulation
 import android.os.Build
 import android.os.Bundle
 import android.os.Parcelable
@@ -10,12 +12,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.lifecycle.lifecycleScope
 import dev.tap.app.discovery.nfc.NfcSessionExchange
 import dev.tap.app.navigation.TapScreen
+import dev.tap.app.nfc.TapHostApduService
 import dev.tap.app.permissions.PermissionHelper
 import dev.tap.app.ui.TapApp
 import dev.tap.app.ui.theme.TapTheme
 import dev.tap.app.ui.viewmodels.TransferViewModel
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -36,6 +41,13 @@ class MainActivity : ComponentActivity() {
         // Handle intent (Sharesheet or NFC)
         handleIntent(intent)
 
+        // Dynamically manage Reader Mode vs HCE Card Emulation based on active screen
+        lifecycleScope.launch {
+            viewModel.currentScreen.collect { screen ->
+                updateNfcOperatingMode(screen)
+            }
+        }
+
         setContent {
             TapTheme {
                 TapApp(viewModel = viewModel)
@@ -45,21 +57,48 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Enable NFC reader mode for device-to-device tapping and tag writing
-        NfcSessionExchange.enableReaderMode(
-            this,
-            onSessionDiscovered = { offer ->
-                viewModel.connectAndSend(offer)
-            },
-            onTagDiscovered = { tag ->
-                viewModel.handleNfcTagDiscovered(tag)
-            }
-        )
+        updateNfcOperatingMode(viewModel.currentScreen.value)
     }
 
     override fun onPause() {
         super.onPause()
         NfcSessionExchange.disableReaderMode(this)
+        val nfcAdapter = NfcAdapter.getDefaultAdapter(this)
+        if (nfcAdapter != null) {
+            try {
+                CardEmulation.getInstance(nfcAdapter).unsetPreferredService(this)
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun updateNfcOperatingMode(screen: TapScreen) {
+        val nfcAdapter = NfcAdapter.getDefaultAdapter(this) ?: return
+        if (!nfcAdapter.isEnabled) return
+
+        if (screen is TapScreen.NfcCardWriter) {
+            // Screen requires active RF polling to write external physical NFC tags
+            NfcSessionExchange.enableReaderMode(
+                this,
+                onSessionDiscovered = { offer ->
+                    viewModel.connectAndSend(offer)
+                },
+                onTagDiscovered = { tag ->
+                    viewModel.handleNfcTagDiscovered(tag)
+                }
+            )
+            try {
+                CardEmulation.getInstance(nfcAdapter).unsetPreferredService(this)
+            } catch (_: Exception) {}
+        } else {
+            // General operation (Contact Card, Home, Settings, etc.):
+            // MUST disable Reader Mode so Galaxy A54 acts as a passive HCE CARD for other phones!
+            // Two reader/pollers cannot read each other; this device must emulate a Type 4 Tag.
+            NfcSessionExchange.disableReaderMode(this)
+            try {
+                val cardEmulation = CardEmulation.getInstance(nfcAdapter)
+                cardEmulation.setPreferredService(this, ComponentName(this, TapHostApduService::class.java))
+            } catch (_: Exception) {}
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

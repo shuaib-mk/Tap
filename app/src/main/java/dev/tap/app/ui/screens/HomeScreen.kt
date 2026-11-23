@@ -145,15 +145,15 @@ fun HomeScreen(viewModel: TransferViewModel) {
             }
 
             // Universal Status Pills
+            val isBgTapSharing by viewModel.isBackgroundTapSharing.collectAsState()
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                StatusChip("Tap Sharing: ${if (isBgTapSharing) "Always Ready" else "Off"}", isBgTapSharing)
                 StatusChip("NFC: ${if (caps.nfcEnabled) "Ready" else "Off"}", caps.nfcEnabled)
-                StatusChip("BLE: ${if (caps.bluetoothEnabled) "Ready" else "Off"}", caps.bluetoothEnabled)
-                StatusChip("Wi-Fi: ${if (caps.wifiConnected) "Connected" else "Direct"}", caps.wifiConnected)
                 Spacer(Modifier.weight(1f))
                 TextButton(
                     onClick = { viewModel.navigateTo(TapScreen.NfcReadiness) },
